@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 4.3.3)
 
 project(wma
-VERSION 0.3.1
+VERSION 0.3.2
 LANGUAGES C CXX
 )
 
@@ -38,6 +38,10 @@ include(cmake/Compiler.cmake)
 include(cmake/Dependencies.cmake)
 
 add_subdirectory(src)
+
+# Not a build input: lists docs/ in the IDE project tree.
+file(GLOB WMA_DOC_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/docs/*.md")
+add_custom_target(wma_docs SOURCES ${WMA_DOC_FILES} README.md CHANGELOG.md)
 
 if(WMA_BUILD_TESTS)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")

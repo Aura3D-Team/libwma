@@ -2,6 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.3.2]
+
+### Changed
+
+- `wma_docs`: a source-only custom target that lists `docs/*.md`, `README.md` and `CHANGELOG.md` so IDEs that build their project tree from CMake show the documentation. Not a build input; nothing depends on it
+
 ## [0.3.1]
 
 ### Fixed

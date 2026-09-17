@@ -12,3 +12,12 @@ add_test(NAME wma_test_utf8 COMMAND wma_test_utf8)
 add_executable(wma_test_mix_callback_slot test_mix_callback_slot.cpp)
 target_link_libraries(wma_test_mix_callback_slot PRIVATE wma)
 add_test(NAME wma_test_mix_callback_slot COMMAND wma_test_mix_callback_slot)
+
+# Needs the Wayland backend's own header, which is deliberately outside
+# <wma/wma.hpp>. Compiles a keymap with xkbcommon and drives the listener
+# directly, so the translation is testable with no compositor and no seat.
+if(WMA_ENABLE_WAYLAND)
+    add_executable(wma_test_wayland_keymap test_wayland_keymap.cpp)
+    target_link_libraries(wma_test_wayland_keymap PRIVATE wma PkgConfig::WAYLAND)
+    add_test(NAME wma_test_wayland_keymap COMMAND wma_test_wayland_keymap)
+endif()

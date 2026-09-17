@@ -16,6 +16,11 @@
 #include <X11/keysym.h>
 #endif
 
+#ifdef WMA_ENABLE_WAYLAND
+//! Keysym constants only -- a standalone header that pulls in no client API.
+#include <xkbcommon/xkbcommon-keysyms.h>
+#endif
+
 namespace wma {
 
 enum Key : i32 {
@@ -516,8 +521,146 @@ inline Key mapX11Key(KeySym x11Key) {
 #endif
 
 #ifdef WMA_ENABLE_WAYLAND
-//! evdev codes map physical key positions. The handler adds 8 to get the
-//! xkbKeycode, so subtract 8 to get back to the standard Linux evdev keycode.
+/**
+ * @brief The key a keysym names, for the Wayland backend.
+ *
+ * The same table @ref mapX11Key uses: xkbcommon reuses X11's keysym values, so
+ * only the constant prefix differs. Kept separate rather than shared so a
+ * Wayland-only build needs no X11 headers.
+ */
+inline Key mapWaylandKeysym(u32 keysym) {
+    switch (keysym) {
+    // Letters
+    case XKB_KEY_a: return Key::KEY_A;
+    case XKB_KEY_b: return Key::KEY_B;
+    case XKB_KEY_c: return Key::KEY_C;
+    case XKB_KEY_d: return Key::KEY_D;
+    case XKB_KEY_e: return Key::KEY_E;
+    case XKB_KEY_f: return Key::KEY_F;
+    case XKB_KEY_g: return Key::KEY_G;
+    case XKB_KEY_h: return Key::KEY_H;
+    case XKB_KEY_i: return Key::KEY_I;
+    case XKB_KEY_j: return Key::KEY_J;
+    case XKB_KEY_k: return Key::KEY_K;
+    case XKB_KEY_l: return Key::KEY_L;
+    case XKB_KEY_m: return Key::KEY_M;
+    case XKB_KEY_n: return Key::KEY_N;
+    case XKB_KEY_o: return Key::KEY_O;
+    case XKB_KEY_p: return Key::KEY_P;
+    case XKB_KEY_q: return Key::KEY_Q;
+    case XKB_KEY_r: return Key::KEY_R;
+    case XKB_KEY_s: return Key::KEY_S;
+    case XKB_KEY_t: return Key::KEY_T;
+    case XKB_KEY_u: return Key::KEY_U;
+    case XKB_KEY_v: return Key::KEY_V;
+    case XKB_KEY_w: return Key::KEY_W;
+    case XKB_KEY_x: return Key::KEY_X;
+    case XKB_KEY_y: return Key::KEY_Y;
+    case XKB_KEY_z: return Key::KEY_Z;
+
+        // Numbers
+    case XKB_KEY_0: return Key::KEY_0;
+    case XKB_KEY_1: return Key::KEY_1;
+    case XKB_KEY_2: return Key::KEY_2;
+    case XKB_KEY_3: return Key::KEY_3;
+    case XKB_KEY_4: return Key::KEY_4;
+    case XKB_KEY_5: return Key::KEY_5;
+    case XKB_KEY_6: return Key::KEY_6;
+    case XKB_KEY_7: return Key::KEY_7;
+    case XKB_KEY_8: return Key::KEY_8;
+    case XKB_KEY_9: return Key::KEY_9;
+
+        // Function keys
+    case XKB_KEY_F1: return Key::KEY_F1;
+    case XKB_KEY_F2: return Key::KEY_F2;
+    case XKB_KEY_F3: return Key::KEY_F3;
+    case XKB_KEY_F4: return Key::KEY_F4;
+    case XKB_KEY_F5: return Key::KEY_F5;
+    case XKB_KEY_F6: return Key::KEY_F6;
+    case XKB_KEY_F7: return Key::KEY_F7;
+    case XKB_KEY_F8: return Key::KEY_F8;
+    case XKB_KEY_F9: return Key::KEY_F9;
+    case XKB_KEY_F10: return Key::KEY_F10;
+    case XKB_KEY_F11: return Key::KEY_F11;
+    case XKB_KEY_F12: return Key::KEY_F12;
+
+        // Controls
+    case XKB_KEY_Escape: return Key::KEY_ESCAPE;
+    case XKB_KEY_Return: return Key::KEY_ENTER; // Main Enter key
+    case XKB_KEY_Tab: return Key::KEY_TAB;
+    case XKB_KEY_BackSpace: return Key::KEY_BACKSPACE;
+    case XKB_KEY_Insert: return Key::KEY_INSERT;
+    case XKB_KEY_Delete: return Key::KEY_DELETE;
+    case XKB_KEY_Right: return Key::KEY_RIGHT;
+    case XKB_KEY_Left: return Key::KEY_LEFT;
+    case XKB_KEY_Down: return Key::KEY_DOWN;
+    case XKB_KEY_Up: return Key::KEY_UP;
+    case XKB_KEY_Page_Up: return Key::KEY_PAGE_UP;
+    case XKB_KEY_Page_Down: return Key::KEY_PAGE_DOWN;
+    case XKB_KEY_Home: return Key::KEY_HOME;
+    case XKB_KEY_End: return Key::KEY_END;
+
+        // Modifiers
+    case XKB_KEY_Shift_L: return Key::KEY_LEFT_SHIFT;
+    case XKB_KEY_Shift_R: return Key::KEY_RIGHT_SHIFT;
+    case XKB_KEY_Control_L: return Key::KEY_LEFT_CTRL;
+    case XKB_KEY_Control_R: return Key::KEY_RIGHT_CTRL;
+    case XKB_KEY_Alt_L: return Key::KEY_LEFT_ALT;
+    case XKB_KEY_Alt_R: return Key::KEY_RIGHT_ALT;
+    case XKB_KEY_Super_L: return Key::KEY_LEFT_SUPER;
+    case XKB_KEY_Super_R: return Key::KEY_RIGHT_SUPER;
+    case XKB_KEY_Caps_Lock: return Key::KEY_CAPS_LOCK;
+    case XKB_KEY_Scroll_Lock: return Key::KEY_SCROLL_LOCK;
+    case XKB_KEY_Num_Lock: return Key::KEY_NUM_LOCK;
+
+        // Symbols
+    case XKB_KEY_space: return Key::KEY_SPACE;
+    case XKB_KEY_minus: return Key::KEY_MINUS;
+    case XKB_KEY_equal: return Key::KEY_EQUAL;
+    case XKB_KEY_bracketleft: return Key::KEY_LEFT_BRACKET;
+    case XKB_KEY_bracketright: return Key::KEY_RIGHT_BRACKET;
+    case XKB_KEY_backslash: return Key::KEY_BACKSLASH;
+    case XKB_KEY_semicolon: return Key::KEY_SEMICOLON;
+    case XKB_KEY_apostrophe: return Key::KEY_APOSTROPHE;
+    case XKB_KEY_grave: return Key::KEY_GRAVE;
+    case XKB_KEY_comma: return Key::KEY_COMMA;
+    case XKB_KEY_period: return Key::KEY_PERIOD;
+    case XKB_KEY_slash: return Key::KEY_SLASH;
+
+        // Keypad
+    case XKB_KEY_KP_0: return Key::KEY_KP_0;
+    case XKB_KEY_KP_1: return Key::KEY_KP_1;
+    case XKB_KEY_KP_2: return Key::KEY_KP_2;
+    case XKB_KEY_KP_3: return Key::KEY_KP_3;
+    case XKB_KEY_KP_4: return Key::KEY_KP_4;
+    case XKB_KEY_KP_5: return Key::KEY_KP_5;
+    case XKB_KEY_KP_6: return Key::KEY_KP_6;
+    case XKB_KEY_KP_7: return Key::KEY_KP_7;
+    case XKB_KEY_KP_8: return Key::KEY_KP_8;
+    case XKB_KEY_KP_9: return Key::KEY_KP_9;
+    case XKB_KEY_KP_Decimal: return Key::KEY_KP_DECIMAL;
+    case XKB_KEY_KP_Divide: return Key::KEY_KP_DIVIDE;
+    case XKB_KEY_KP_Multiply: return Key::KEY_KP_MULTIPLY;
+    case XKB_KEY_KP_Subtract: return Key::KEY_KP_SUBTRACT;
+    case XKB_KEY_KP_Add: return Key::KEY_KP_ADD;
+    case XKB_KEY_KP_Enter: return Key::KEY_KP_ENTER; // Keypad Enter key
+
+    default: return Key::KEY_UNKNOWN;
+    }
+}
+
+/**
+ * @brief The key at an evdev position, assuming a us layout.
+ *
+ * A fallback, not the normal path. The compositor hands every client a keymap
+ * and expects it to translate through that; reading the keycode as a fixed
+ * position is right only on a us layout, and on a virtual keyboard -- which
+ * assigns whatever keysyms it likes to whatever keycodes it likes -- it is
+ * nonsense. Used only until the keymap arrives.
+ *
+ * The handler adds 8 to get the xkbKeycode, so subtract 8 to get back to the
+ * standard Linux evdev keycode.
+ */
 inline Key mapWaylandKey(u32 xkbKeycode) {
     u32 evdevKey = xkbKeycode - 8;
 

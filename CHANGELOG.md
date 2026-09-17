@@ -2,6 +2,13 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.3.1]
+
+### Fixed
+
+- **Wayland: the compositor's keymap decides which key an event names.** The backend read the evdev keycode as a fixed QWERTY position, so it was correct only on a `us` layout: Dvorak, AZERTY and Colemak all reported the wrong key, and a virtual keyboard -- which assigns whatever keysyms it likes to whatever keycodes it likes -- produced nonsense. Anything typed through `wtype` began with keycode 1, which the position table calls Escape, so the first keystroke into a UI dismissed whatever had focus. Keys now resolve through `xkb_state_key_get_one_sym()` and the keysym table (`mapWaylandKeysym()`, the same mapping `mapX11Key()` uses, since xkbcommon reuses X11's keysym values). The position table is kept as `mapWaylandKey()` for the window before the compositor has sent a keymap, and for a keysym the table does not name -- a caller binding physical keys is better served by a position than by `KEY_UNKNOWN`
+- `wma_test_wayland_keymap` covers it: xkbcommon compiles a keymap from a string, so the whole path is testable with no compositor and no seat
+
 ## [0.3.0]
 
 ### Added

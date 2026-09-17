@@ -51,6 +51,10 @@ public:
     void handleRepeatInfo(i32 rate, i32 delay);
 
 private:
+    //! The key @p xkbKeycode names under the current keymap, falling back to
+    //! its us-layout position while no keymap has arrived.
+    [[nodiscard]] Key keyFor(u32 xkbKeycode) const;
+
     /**
      * @brief Runs @p keycode through the compose table, then emits its text.
      *

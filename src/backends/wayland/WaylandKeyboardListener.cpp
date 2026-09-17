@@ -295,11 +295,32 @@ void WaylandKeyboardListener::composeAndDispatchText(u32 keycode)
         [this](Codepoint codepoint) { dispatchText(codepoint); });
 }
 
+Key WaylandKeyboardListener::keyFor(u32 xkbKeycode) const
+{
+    /*
+     * The compositor's keymap decides, not the keycode's position. A position
+     * table is right only on a us layout: on Dvorak or AZERTY it names the
+     * wrong key, and on a virtual keyboard -- which assigns whatever keysyms
+     * it likes to whatever keycodes it likes -- keycode 1 is not Escape at
+     * all. Falling back to the position keeps the pre-keymap window usable.
+     */
+    if (!xkbState_)
+        return mapWaylandKey(xkbKeycode);
+
+    const xkb_keysym_t keysym = xkb_state_key_get_one_sym(xkbState_, xkbKeycode);
+    const Key named = mapWaylandKeysym(static_cast<u32>(keysym));
+
+    //! A keysym this table does not name -- a media key, a layout's own
+    //! symbol -- still has a position, and a caller binding physical keys is
+    //! better served by that than by KEY_UNKNOWN.
+    return named != Key::KEY_UNKNOWN ? named : mapWaylandKey(xkbKeycode);
+}
+
 void WaylandKeyboardListener::handleKey(u32, u32, u32 key, u32 state)
 {
     //! Wayland reports evdev keycodes; xkb numbers the same keys 8 higher.
     const u32 xkbKeycode = key + 8;
-    const Key mappedKey = mapWaylandKey(xkbKeycode);
+    const Key mappedKey = keyFor(xkbKeycode);
 
     if (state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         /*

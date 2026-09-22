@@ -187,6 +187,19 @@ namespace {
         INK_LOG << "SDL window created: " << windowName;
     }
 
+    void SdlWindowManager::waitEvents(int timeoutMs) {
+#ifdef __EMSCRIPTEN__
+        //! The browser owns the loop; a wait here stalls the tab.
+        (void)timeoutMs;
+#else
+        //! A null event leaves the first arrival in the queue for pollEvents()
+        //! below, so the wait adds nothing to the dispatch path.
+        if (timeoutMs > 0)
+            SDL_WaitEventTimeout(nullptr, timeoutMs);
+#endif
+        pollEvents();
+    }
+
     void SdlWindowManager::pollEvents() {
 #ifdef __ANDROID__
         // Detect the ANativeWindow being torn down/replaced -- Android does

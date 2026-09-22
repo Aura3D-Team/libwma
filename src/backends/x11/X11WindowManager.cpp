@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <poll.h>
 #include <utility>
 
 //! For XkbSetDetectableAutoRepeat; see createWindow().
@@ -269,6 +270,17 @@ void X11WindowManager::destroySoftwareImage()
         XDestroyImage(image_); // also frees image_->data
         image_ = nullptr;
     }
+}
+
+void X11WindowManager::waitEvents(int timeoutMs)
+{
+    //! XPending flushes and counts what is already queued; only an empty
+    //! queue is worth sleeping on.
+    if (display_ && timeoutMs > 0 && XPending(display_) == 0) {
+        pollfd ready{ConnectionNumber(display_), POLLIN, 0};
+        poll(&ready, 1, timeoutMs);
+    }
+    pollEvents();
 }
 
 void X11WindowManager::pollEvents()

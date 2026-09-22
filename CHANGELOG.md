@@ -2,6 +2,16 @@
 
 All notable changes to libwma are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- `IWindowManager::waitEvents(timeoutMs)`: `pollEvents()` that first sleeps up to `timeoutMs` for an event, for a client that redraws only on change and so has no frame to block on. Wayland waits on the display fd, X11 on the connection, GLFW through `glfwWaitEventsTimeout`, SDL3 through `SDL_WaitEventTimeout`; under Emscripten it never waits, since the browser owns the loop
+
+### Fixed
+
+- ALSA: clear the running flag only after the writer thread is joined. `isRunning()` reported false during the join window, so a caller using it to decide that no mix callback could be executing -- the documented postcondition, and what the SDL and null backends already provided -- could free memory the callback was still reading
+
 ## [0.3.2]
 
 ### Changed

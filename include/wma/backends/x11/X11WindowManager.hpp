@@ -24,6 +24,7 @@ public:
 
     void createWindow(const char* windowName) override;
     void pollEvents() override;
+    void waitEvents(int timeoutMs) override;
     void swapBuffers() override;
     void* getWindowInstance() override;
     void* getNativeDisplayHandle() const noexcept override;

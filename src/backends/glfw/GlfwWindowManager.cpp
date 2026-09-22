@@ -186,6 +186,13 @@ namespace {
         glfwPollEvents();
     }
 
+    void GlfwWindowManager::waitEvents(int timeoutMs) {
+        if (timeoutMs > 0)
+            glfwWaitEventsTimeout(static_cast<double>(timeoutMs) / 1000.0);
+        else
+            glfwPollEvents();
+    }
+
     void GlfwWindowManager::swapBuffers() {
         if (graphicsAPI_ == GraphicsAPI::OpenGL && window_) {
             glfwSwapBuffers(window_);

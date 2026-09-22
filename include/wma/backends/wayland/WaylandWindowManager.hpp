@@ -27,6 +27,7 @@ public:
     void createWindow(const char* windowName) override;
     bool transparentFramebuffer() const noexcept override { return role_ && role_->transparentFramebuffer(); }
     void pollEvents() override;
+    void waitEvents(int timeoutMs) override;
     void swapBuffers() override;
     void* getWindowInstance() override;
     void* getNativeDisplayHandle() const noexcept override;
@@ -52,6 +53,8 @@ public:
 private:
     std::unique_ptr<WaylandSurfaceRole> role_;
     void rebindListeners() noexcept;
+    //! pollEvents() and waitEvents() differ only by the poll timeout.
+    void dispatch(int timeoutMs);
     wl_display* display_;
     wl_registry* registry_;
     wl_compositor* compositor_;

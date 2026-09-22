@@ -27,6 +27,7 @@ namespace wma {
 
         void createWindow(const char* windowName) override;
         void pollEvents() override;
+        void waitEvents(int timeoutMs) override;
         void swapBuffers() override;
         void* getWindowInstance() override;
         bool waitUntilWindowReady() override;

@@ -48,6 +48,20 @@ namespace wma {
         //! Pump the OS event queue once (non-blocking). Safe to call every frame.
         virtual void pollEvents() = 0;
 
+        /**
+         * @brief Pump the queue, sleeping up to @p timeoutMs for an event.
+         *
+         * For a client that only redraws when something changes: without a
+         * frame to block on, its loop has nothing else to wait on and would
+         * spin. Returns early the moment an event arrives; a zero timeout is
+         * exactly pollEvents().
+         *
+         * An upper bound, not a sleep guarantee: under Emscripten the browser
+         * owns the loop and this never waits, so a caller must tolerate an
+         * immediate return.
+         */
+        virtual void waitEvents(int timeoutMs) { (void)timeoutMs; pollEvents(); }
+
         //! Present the current frame: GL buffer swap, software blit, or no-op for
         //! Vulkan and Metal (which the application presents through its own
         //! swapchain / the CAMetalLayer's drawables).

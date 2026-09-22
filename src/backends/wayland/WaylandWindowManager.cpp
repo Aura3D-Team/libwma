@@ -386,6 +386,19 @@ void WaylandWindowManager::destroyShmBuffer()
 
 void WaylandWindowManager::pollEvents()
 {
+    dispatch(0);
+}
+
+void WaylandWindowManager::waitEvents(int timeoutMs)
+{
+    dispatch(timeoutMs < 0 ? 0 : timeoutMs);
+}
+
+//! The two differ only in how long the poll below is allowed to wait, so they
+//! share one body: a client that redraws on change waits here instead of on a
+//! frame it is not going to draw.
+void WaylandWindowManager::dispatch(int timeoutMs)
+{
     if (!display_) 
         return;
 
@@ -402,9 +415,10 @@ void WaylandWindowManager::pollEvents()
         return;
     }
 
-    //! read_events waits for the compositor; pollEvents must never wait for input.
+    //! read_events itself waits for the compositor with no bound; the timeout
+    //! belongs here, where a zero is pollEvents' never-wait contract.
     pollfd ready{wl_display_get_fd(display_), POLLIN, 0};
-    const int result = poll(&ready, 1, 0);
+    const int result = poll(&ready, 1, timeoutMs);
     if (result > 0 && (ready.revents & POLLIN)) {
         if (wl_display_read_events(display_) < 0)
             windowShouldClose_ = true;

@@ -67,7 +67,10 @@ namespace wma {
         //! by the time this returns. Safe to call when already stopped.
         virtual void stop() noexcept = 0;
 
-        //! Whether the device is currently pulling samples.
+        //! Whether the device is currently pulling samples. Stays true until
+        //! stop() has joined the callback, so a false reading is a guarantee
+        //! that none is executing -- what callers freeing mix-callback memory
+        //! depend on.
         [[nodiscard]] virtual bool isRunning() const noexcept = 0;
 
         /**

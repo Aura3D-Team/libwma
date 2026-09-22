@@ -208,7 +208,6 @@ void AlsaAudioDevice::stop() noexcept
         return;
     }
 
-    _running.store(false, std::memory_order_release);
     _writer.request_stop();
 
     //! Joined rather than interrupted: the thread can be parked inside
@@ -217,6 +216,12 @@ void AlsaAudioDevice::stop() noexcept
     //! is what makes the "callback is not running on return" postcondition
     //! true without racing the driver.
     _writer.join();
+
+    //! Cleared only after the join, so isRunning() never reports false while a
+    //! callback is still executing. Callers rely on that to decide when memory
+    //! the mix callback reads can be freed; request_stop() is what ends the
+    //! loop, so moving this later costs nothing.
+    _running.store(false, std::memory_order_release);
 
     if (_pcm)
         snd_pcm_drop(_pcm);

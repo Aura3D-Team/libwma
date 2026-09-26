@@ -5,7 +5,8 @@
 
 #include "wma/input/keyboard/Keys.h"
 
-namespace wma {
+namespace wma
+{
 
 /**
  * @brief Whether a key event is a fresh press, an auto-repeat, or a release.
@@ -16,7 +17,8 @@ namespace wma {
  * once per physical press (so it ignores Repeat entirely). Collapsing them
  * would make the second case impossible to express.
  */
-enum class KeyState : u8 {
+enum class KeyState : u8
+{
     Released = 0,
     Pressed,
     Repeat
@@ -31,23 +33,26 @@ enum class KeyState : u8 {
  * (X11 reports the state *before* the event, GLFW the state after), and a
  * caller comparing `ctrl` across platforms should not have to know that.
  */
-struct KeyModifiers {
+struct KeyModifiers
+{
     bool shift = false;
-    bool ctrl  = false;
-    bool alt   = false;
+    bool ctrl = false;
+    bool alt = false;
     bool super = false; //! Windows / Command.
 
-    [[nodiscard]] constexpr bool any() const noexcept {
+    [[nodiscard]] constexpr bool any() const noexcept
+    {
         return shift || ctrl || alt || super;
     }
 
     //! True when no modifier other than Shift is held. The usual test for
     //! "this keystroke should insert a character".
-    [[nodiscard]] constexpr bool onlyShiftOrNone() const noexcept {
+    [[nodiscard]] constexpr bool onlyShiftOrNone() const noexcept
+    {
         return !ctrl && !alt && !super;
     }
 
-    friend constexpr bool operator==(const KeyModifiers&, const KeyModifiers&) noexcept = default;
+    friend constexpr bool operator==(const KeyModifiers &, const KeyModifiers &) noexcept = default;
 };
 
 /**
@@ -58,19 +63,22 @@ struct KeyModifiers {
  * (and without displacing the application's own bindings), which is what this
  * exists for; gameplay code should keep using the binding table.
  */
-struct WMAKeyEvent {
+struct WMAKeyEvent
+{
     Key key = KEY_UNKNOWN;
     KeyState state = KeyState::Released;
     KeyModifiers mods{};
 
     constexpr WMAKeyEvent() noexcept = default;
 
-    constexpr WMAKeyEvent(Key key, KeyState state, KeyModifiers mods) noexcept
-        : key(key), state(state), mods(mods) {}
+    constexpr WMAKeyEvent(Key key, KeyState state, KeyModifiers mods) noexcept : key(key), state(state), mods(mods)
+    {
+    }
 
     //! True for a fresh press or an auto-repeat -- the test an editing action
     //! (backspace, cursor movement) wants.
-    [[nodiscard]] constexpr bool isPressOrRepeat() const noexcept {
+    [[nodiscard]] constexpr bool isPressOrRepeat() const noexcept
+    {
         return state == KeyState::Pressed || state == KeyState::Repeat;
     }
 };

@@ -1,37 +1,39 @@
 #ifdef WMA_ENABLE_X11
 #include "wma/backends/x11/X11KeyboardListener.hpp"
+#include "wma/exceptions/WMAException.hpp"
 #include "wma/input/keyboard/Keys.h"
 #include "wma/input/keyboard/Utf8.hpp"
-#include "wma/exceptions/WMAException.hpp"
 
 #include <array>
 #include <clocale>
 #include <string_view>
 #include <vector>
 
-namespace wma {
+namespace wma
+{
 
-X11KeyboardListener::X11KeyboardListener()
-    : KeyboardListener()
-    , display_(nullptr)
+X11KeyboardListener::X11KeyboardListener() : KeyboardListener(), display_(nullptr)
 {
 }
 
 X11KeyboardListener::~X11KeyboardListener()
 {
-    if (inputContext_) {
+    if (inputContext_)
+    {
         XDestroyIC(inputContext_);
         inputContext_ = nullptr;
     }
-    if (inputMethod_) {
+    if (inputMethod_)
+    {
         XCloseIM(inputMethod_);
         inputMethod_ = nullptr;
     }
 }
 
-void X11KeyboardListener::initialize(Display* display)
+void X11KeyboardListener::initialize(Display *display)
 {
-    if (!display) {
+    if (!display)
+    {
         throw InputException("Invalid X11 Display pointer");
     }
     display_ = display;
@@ -53,8 +55,7 @@ void X11KeyboardListener::attachWindow(Window window)
      * setlocale() only runs while the program is still in the default "C"
      * locale, so an application that already chose one keeps it.
      */
-    if (const char* current = std::setlocale(LC_CTYPE, nullptr);
-        !current || std::string_view{current} == "C")
+    if (const char *current = std::setlocale(LC_CTYPE, nullptr); !current || std::string_view{current} == "C")
     {
         std::setlocale(LC_CTYPE, "");
     }
@@ -75,13 +76,11 @@ void X11KeyboardListener::attachWindow(Window window)
      * candidate lists itself, which a windowing library has no business doing
      * -- and this style is the one every IM is required to support.
      */
-    inputContext_ = XCreateIC(inputMethod_,
-                              XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
-                              XNClientWindow, window_,
-                              XNFocusWindow, window_,
-                              nullptr);
+    inputContext_ = XCreateIC(inputMethod_, XNInputStyle, XIMPreeditNothing | XIMStatusNothing, XNClientWindow, window_,
+                              XNFocusWindow, window_, nullptr);
 
-    if (!inputContext_) {
+    if (!inputContext_)
+    {
         XCloseIM(inputMethod_);
         inputMethod_ = nullptr;
         return;
@@ -93,8 +92,7 @@ void X11KeyboardListener::attachWindow(Window window)
      * replacing keeps whatever X11WindowManager already asked for.
      */
     long imEventMask = 0;
-    if (XGetICValues(inputContext_, XNFilterEvents, &imEventMask, nullptr) == nullptr
-        && imEventMask != 0)
+    if (XGetICValues(inputContext_, XNFilterEvents, &imEventMask, nullptr) == nullptr && imEventMask != 0)
     {
         XWindowAttributes attributes{};
         if (XGetWindowAttributes(display_, window_, &attributes))
@@ -104,7 +102,7 @@ void X11KeyboardListener::attachWindow(Window window)
     XSetICFocus(inputContext_);
 }
 
-bool X11KeyboardListener::filterEvent(XEvent* event) const
+bool X11KeyboardListener::filterEvent(XEvent *event) const
 {
     //! XFilterEvent must be offered every event when an IM is in use, not just
     //! key events: the method communicates through synthetic events of its
@@ -112,7 +110,7 @@ bool X11KeyboardListener::filterEvent(XEvent* event) const
     return event != nullptr && XFilterEvent(event, None) == True;
 }
 
-void X11KeyboardListener::lookupAndDispatchText(const XKeyEvent& xKeyEvent)
+void X11KeyboardListener::lookupAndDispatchText(const XKeyEvent &xKeyEvent)
 {
     //! Both lookup functions take a non-const event; X11's API predates const.
     XKeyEvent mutableEvent = xKeyEvent;
@@ -130,8 +128,7 @@ void X11KeyboardListener::lookupAndDispatchText(const XKeyEvent& xKeyEvent)
          * Characters composed through a dead key are lost here, which is the
          * price of having no IM -- ordinary typing still works.
          */
-        const int length = XLookupString(&mutableEvent, stackBuffer.data(),
-                                         static_cast<int>(stackBuffer.size()) - 1,
+        const int length = XLookupString(&mutableEvent, stackBuffer.data(), static_cast<int>(stackBuffer.size()) - 1,
                                          &keySym, nullptr);
 
         for (int i = 0; i < length; ++i)
@@ -140,23 +137,23 @@ void X11KeyboardListener::lookupAndDispatchText(const XKeyEvent& xKeyEvent)
         return;
     }
 
-    int length = Xutf8LookupString(inputContext_, &mutableEvent,
-                                   stackBuffer.data(),
-                                   static_cast<int>(stackBuffer.size()) - 1,
-                                   &keySym, &status);
+    int length = Xutf8LookupString(inputContext_, &mutableEvent, stackBuffer.data(),
+                                   static_cast<int>(stackBuffer.size()) - 1, &keySym, &status);
 
     if (status == XBufferOverflow)
     {
         //! A commit longer than the stack buffer, i.e. an IME phrase. `length`
         //! now holds the size required, so one exactly-sized retry suffices.
         std::vector<char> heapBuffer(static_cast<usize>(length) + 1u, '\0');
-        length = Xutf8LookupString(inputContext_, &mutableEvent,
-                                   heapBuffer.data(), length, &keySym, &status);
+        length = Xutf8LookupString(inputContext_, &mutableEvent, heapBuffer.data(), length, &keySym, &status);
 
         if (length > 0 && (status == XLookupChars || status == XLookupBoth))
         {
             utf8::decode(std::string_view{heapBuffer.data(), static_cast<usize>(length)},
-                         [this](Codepoint codepoint) { dispatchText(codepoint); });
+                         [this](Codepoint codepoint)
+                         {
+                             dispatchText(codepoint);
+                         });
         }
         return;
     }
@@ -169,15 +166,19 @@ void X11KeyboardListener::lookupAndDispatchText(const XKeyEvent& xKeyEvent)
     if (length > 0)
     {
         utf8::decode(std::string_view{stackBuffer.data(), static_cast<usize>(length)},
-                     [this](Codepoint codepoint) { dispatchText(codepoint); });
+                     [this](Codepoint codepoint)
+                     {
+                         dispatchText(codepoint);
+                     });
     }
 }
 
-void X11KeyboardListener::handleKeyEvent(KeySym x11Key, const XKeyEvent& xKeyEvent)
+void X11KeyboardListener::handleKeyEvent(KeySym x11Key, const XKeyEvent &xKeyEvent)
 {
     const Key mappedKey = mapX11Key(x11Key);
 
-    if (xKeyEvent.type == KeyPress) {
+    if (xKeyEvent.type == KeyPress)
+    {
         /*
          * X11 puts no repeat flag on the event. Auto-repeat arrives as a
          * KeyPress for a key that is already held, which the tracked key state
@@ -192,7 +193,9 @@ void X11KeyboardListener::handleKeyEvent(KeySym x11Key, const XKeyEvent& xKeyEve
         //! After the key event, so a text handler that inspects modifiers()
         //! sees the state this keystroke produced.
         lookupAndDispatchText(xKeyEvent);
-    } else if (xKeyEvent.type == KeyRelease) {
+    }
+    else if (xKeyEvent.type == KeyRelease)
+    {
         dispatchKeyRelease(mappedKey);
     }
 }

@@ -1,16 +1,17 @@
 #include "wma/backends/wayland/WaylandMouseListener.hpp"
-#include "wma/exceptions/WMAException.hpp"
 #include "wma/core/Types.hpp"
+#include "wma/exceptions/WMAException.hpp"
 
 #include <linux/input-event-codes.h>
 
-namespace {
+namespace
+{
 
 //! Cursor-theme lookup name for the default arrow pointer. "left_ptr" is the
 //! legacy X-cursor name every theme still ships for compatibility; the newer
 //! "default" alias is not guaranteed present on every theme, so the legacy
 //! name is the safer bet for actually finding an image.
-constexpr const char* kDefaultCursorName = "left_ptr";
+constexpr const char *kDefaultCursorName = "left_ptr";
 
 //! Cursor image size requested from the theme, in surface pixels. 24 is the
 //! conventional X11/Wayland default; asking for it explicitly keeps the
@@ -20,36 +21,37 @@ constexpr int kCursorSize = 24;
 
 } // namespace
 
-namespace wma {
+namespace wma
+{
 
-const wl_pointer_listener WaylandMouseListener::pointerListener_ = {
-    .enter = handleEnterCallback,
-    .leave = handleLeaveCallback,
-    .motion = handleMotionCallback,
-    .button = handleButtonCallback,
-    .axis = handleAxisCallback,
-    .frame = handleFrameCallback,
-    .axis_source = handleAxisSourceCallback,
-    .axis_stop = handleAxisStopCallback,
-    .axis_discrete = handleAxisDiscreteCallback
-};
+const wl_pointer_listener WaylandMouseListener::pointerListener_ = {.enter = handleEnterCallback,
+                                                                    .leave = handleLeaveCallback,
+                                                                    .motion = handleMotionCallback,
+                                                                    .button = handleButtonCallback,
+                                                                    .axis = handleAxisCallback,
+                                                                    .frame = handleFrameCallback,
+                                                                    .axis_source = handleAxisSourceCallback,
+                                                                    .axis_stop = handleAxisStopCallback,
+                                                                    .axis_discrete = handleAxisDiscreteCallback};
 
-WaylandMouseListener::WaylandMouseListener()
-    : MouseListener()
-    , pointer_(nullptr)
-    , cursorSurface_(nullptr)
+WaylandMouseListener::WaylandMouseListener() : MouseListener(), pointer_(nullptr), cursorSurface_(nullptr)
 {
 }
 
-WaylandMouseListener::~WaylandMouseListener() { detach(); }
+WaylandMouseListener::~WaylandMouseListener()
+{
+    detach();
+}
 
 void WaylandMouseListener::detach() noexcept
 {
-    if (cursorTheme_) {
+    if (cursorTheme_)
+    {
         wl_cursor_theme_destroy(cursorTheme_);
         cursorTheme_ = nullptr;
     }
-    if (cursorSurface_) {
+    if (cursorSurface_)
+    {
         wl_surface_destroy(cursorSurface_);
         cursorSurface_ = nullptr;
     }
@@ -57,9 +59,10 @@ void WaylandMouseListener::detach() noexcept
     pointer_ = nullptr;
 }
 
-void WaylandMouseListener::initialize(wl_pointer* pointer, wl_compositor* compositor, wl_shm* shm)
+void WaylandMouseListener::initialize(wl_pointer *pointer, wl_compositor *compositor, wl_shm *shm)
 {
-    if (!pointer) {
+    if (!pointer)
+    {
         throw InputException("Invalid Wayland pointer");
     }
     if (pointer_ == pointer)
@@ -73,10 +76,12 @@ void WaylandMouseListener::initialize(wl_pointer* pointer, wl_compositor* compos
     //! A caller that only ever hides the cursor -- or one built before this
     //! parameter pair existed, via the two-argument overload -- still works,
     //! just without a restore path (see applyCursorState()).
-    if (compositor) {
+    if (compositor)
+    {
         cursorSurface_ = wl_compositor_create_surface(compositor);
     }
-    if (shm) {
+    if (shm)
+    {
         //! nullptr theme name asks the compositor for its configured default
         //! theme rather than pinning one by name, so this follows whatever
         //! cursor theme the user has actually set system-wide.
@@ -84,8 +89,7 @@ void WaylandMouseListener::initialize(wl_pointer* pointer, wl_compositor* compos
     }
 }
 
-void WaylandMouseListener::handleEnter(u32 serial, wl_surface*,
-                                       wl_fixed_t x, wl_fixed_t y)
+void WaylandMouseListener::handleEnter(u32 serial, wl_surface *, wl_fixed_t x, wl_fixed_t y)
 {
     f64 xpos = wl_fixed_to_double(x);
     f64 ypos = wl_fixed_to_double(y);
@@ -104,7 +108,7 @@ void WaylandMouseListener::handleEnter(u32 serial, wl_surface*,
     applyCursorState();
 }
 
-void WaylandMouseListener::handleLeave(u32, wl_surface*)
+void WaylandMouseListener::handleLeave(u32, wl_surface *)
 {
 }
 
@@ -113,7 +117,8 @@ void WaylandMouseListener::handleMotion(u32, wl_fixed_t x, wl_fixed_t y)
     f64 xpos = wl_fixed_to_double(x);
     f64 ypos = wl_fixed_to_double(y);
 
-    if (firstMouse_) {
+    if (firstMouse_)
+    {
         lastPosition_ = WMAMousePosition(xpos, ypos);
         firstMouse_ = false;
     }
@@ -125,13 +130,15 @@ void WaylandMouseListener::handleMotion(u32, wl_fixed_t x, wl_fixed_t y)
     lastPosition_ = WMAMousePosition(xpos, ypos);
 }
 
-void WaylandMouseListener::handleButton(u32, u32,
-                                        u32 button, u32 state)
+void WaylandMouseListener::handleButton(u32, u32, u32 button, u32 state)
 {
     const i32 unifiedButton = convertButton(button);
-    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED)
+    {
         dispatchButtonPress(unifiedButton);
-    } else if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+    }
+    else if (state == WL_POINTER_BUTTON_STATE_RELEASED)
+    {
         dispatchButtonRelease(unifiedButton);
     }
 }
@@ -141,24 +148,36 @@ void WaylandMouseListener::handleAxis(u32, u32 axis, wl_fixed_t value)
     const f64 scrollValue = wl_fixed_to_double(value);
     WMAMouseScroll scroll;
 
-    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+    {
         scroll.yOffset = scrollValue > 0 ? -1.0 : 1.0;
-    } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+    }
+    else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+    {
         scroll.xOffset = scrollValue > 0 ? 1.0 : -1.0;
     }
     dispatchScroll(scroll);
 }
 
-void WaylandMouseListener::handleFrame() {}
-void WaylandMouseListener::handleAxisSource(u32) {}
-void WaylandMouseListener::handleAxisStop(u32, u32) {}
+void WaylandMouseListener::handleFrame()
+{
+}
+void WaylandMouseListener::handleAxisSource(u32)
+{
+}
+void WaylandMouseListener::handleAxisStop(u32, u32)
+{
+}
 
 void WaylandMouseListener::handleAxisDiscrete(u32 axis, i32 discrete)
 {
     WMAMouseScroll scroll;
-    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+    {
         scroll.yOffset = static_cast<f64>(discrete);
-    } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+    }
+    else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+    {
         scroll.xOffset = static_cast<f64>(discrete);
     }
     dispatchScroll(scroll);
@@ -171,7 +190,8 @@ void WaylandMouseListener::updateCursorState()
 
 void WaylandMouseListener::applyCursorState()
 {
-    if (!pointer_) return;
+    if (!pointer_)
+        return;
 
     /*
      * wl_pointer.set_cursor is only valid with the serial of the most recent
@@ -180,9 +200,11 @@ void WaylandMouseListener::applyCursorState()
      * enter there is nothing legal to call it with; handleEnter() re-applies
      * this the moment a serial exists, so nothing is lost by skipping here.
      */
-    if (enterSerial_ == 0) return;
+    if (enterSerial_ == 0)
+        return;
 
-    if (!cursorEnabled_) {
+    if (!cursorEnabled_)
+    {
         //! The hide. A null surface is not "leave it as-is" -- it is the
         //! documented way to tell the compositor to draw nothing at the
         //! pointer position, which is the only such mechanism Wayland has.
@@ -194,100 +216,110 @@ void WaylandMouseListener::applyCursorState()
     //! theme and a surface to attach it to there is nothing to restore *to*,
     //! so the pointer is left exactly as the compositor's own implicit
     //! per-enter reset already put it (its default image).
-    if (!cursorTheme_ || !cursorSurface_) return;
+    if (!cursorTheme_ || !cursorSurface_)
+        return;
 
-    wl_cursor* cursor = wl_cursor_theme_get_cursor(cursorTheme_, kDefaultCursorName);
-    if (!cursor || cursor->image_count == 0) return;
+    wl_cursor *cursor = wl_cursor_theme_get_cursor(cursorTheme_, kDefaultCursorName);
+    if (!cursor || cursor->image_count == 0)
+        return;
 
     //! Static image: the first frame of a (possibly animated) cursor is
     //! enough for a restored system pointer, and avoids owning an animation
     //! timer purely to cycle frames on a cursor this class does not draw.
-    wl_cursor_image* image = cursor->images[0];
-    wl_buffer* buffer = wl_cursor_image_get_buffer(image);
-    if (!buffer) return;
+    wl_cursor_image *image = cursor->images[0];
+    wl_buffer *buffer = wl_cursor_image_get_buffer(image);
+    if (!buffer)
+        return;
 
     wl_surface_attach(cursorSurface_, buffer, 0, 0);
-    wl_surface_damage(cursorSurface_, 0, 0,
-                      static_cast<i32>(image->width), static_cast<i32>(image->height));
+    wl_surface_damage(cursorSurface_, 0, 0, static_cast<i32>(image->width), static_cast<i32>(image->height));
     wl_surface_commit(cursorSurface_);
 
-    wl_pointer_set_cursor(pointer_, enterSerial_, cursorSurface_,
-                          static_cast<i32>(image->hotspot_x), static_cast<i32>(image->hotspot_y));
+    wl_pointer_set_cursor(pointer_, enterSerial_, cursorSurface_, static_cast<i32>(image->hotspot_x),
+                          static_cast<i32>(image->hotspot_y));
 }
 
 i32 WaylandMouseListener::convertButton(u32 waylandButton) const
 {
-    switch (waylandButton) {
-    case BTN_LEFT:   return MouseButton::WMALeft;
-    case BTN_RIGHT:  return MouseButton::WMARight;
-    case BTN_MIDDLE: return MouseButton::WMAMiddle;
-    case BTN_SIDE:   return MouseButton::WMAButton4;
-    case BTN_EXTRA:  return MouseButton::WMAButton5;
-    default:         return static_cast<i32>(waylandButton);
+    switch (waylandButton)
+    {
+    case BTN_LEFT:
+        return MouseButton::WMALeft;
+    case BTN_RIGHT:
+        return MouseButton::WMARight;
+    case BTN_MIDDLE:
+        return MouseButton::WMAMiddle;
+    case BTN_SIDE:
+        return MouseButton::WMAButton4;
+    case BTN_EXTRA:
+        return MouseButton::WMAButton5;
+    default:
+        return static_cast<i32>(waylandButton);
     }
 }
 
-void WaylandMouseListener::handleEnterCallback(void* data, wl_pointer*,
-                                               u32 serial, wl_surface* surface,
-                                               wl_fixed_t x, wl_fixed_t y)
+void WaylandMouseListener::handleEnterCallback(void *data, wl_pointer *, u32 serial, wl_surface *surface, wl_fixed_t x,
+                                               wl_fixed_t y)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleEnter(serial, surface, x, y);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleEnter(serial, surface, x, y);
 }
 
-void WaylandMouseListener::handleLeaveCallback(void* data, wl_pointer*,
-                                               u32 serial, wl_surface* surface)
+void WaylandMouseListener::handleLeaveCallback(void *data, wl_pointer *, u32 serial, wl_surface *surface)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleLeave(serial, surface);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleLeave(serial, surface);
 }
 
-void WaylandMouseListener::handleMotionCallback(void* data, wl_pointer*,
-                                                u32 time, wl_fixed_t x, wl_fixed_t y)
+void WaylandMouseListener::handleMotionCallback(void *data, wl_pointer *, u32 time, wl_fixed_t x, wl_fixed_t y)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleMotion(time, x, y);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleMotion(time, x, y);
 }
 
-void WaylandMouseListener::handleButtonCallback(void* data, wl_pointer*,
-                                                u32 serial, u32 time,
-                                                u32 button, u32 state)
+void WaylandMouseListener::handleButtonCallback(void *data, wl_pointer *, u32 serial, u32 time, u32 button, u32 state)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleButton(serial, time, button, state);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleButton(serial, time, button, state);
 }
 
-void WaylandMouseListener::handleAxisCallback(void* data, wl_pointer*,
-                                              u32 time, u32 axis, wl_fixed_t value)
+void WaylandMouseListener::handleAxisCallback(void *data, wl_pointer *, u32 time, u32 axis, wl_fixed_t value)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleAxis(time, axis, value);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleAxis(time, axis, value);
 }
 
-void WaylandMouseListener::handleFrameCallback(void* data, wl_pointer*)
+void WaylandMouseListener::handleFrameCallback(void *data, wl_pointer *)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleFrame();
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleFrame();
 }
 
-void WaylandMouseListener::handleAxisSourceCallback(void* data, wl_pointer*, u32 axis_source)
+void WaylandMouseListener::handleAxisSourceCallback(void *data, wl_pointer *, u32 axis_source)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleAxisSource(axis_source);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleAxisSource(axis_source);
 }
 
-void WaylandMouseListener::handleAxisStopCallback(void* data, wl_pointer*,
-                                                  u32 time, u32 axis)
+void WaylandMouseListener::handleAxisStopCallback(void *data, wl_pointer *, u32 time, u32 axis)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleAxisStop(time, axis);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleAxisStop(time, axis);
 }
 
-void WaylandMouseListener::handleAxisDiscreteCallback(void* data, wl_pointer*,
-                                                      u32 axis, i32 discrete)
+void WaylandMouseListener::handleAxisDiscreteCallback(void *data, wl_pointer *, u32 axis, i32 discrete)
 {
-    auto* l = static_cast<WaylandMouseListener*>(data);
-    if (l) l->handleAxisDiscrete(axis, discrete);
+    auto *l = static_cast<WaylandMouseListener *>(data);
+    if (l)
+        l->handleAxisDiscrete(axis, discrete);
 }
 
 } // namespace wma

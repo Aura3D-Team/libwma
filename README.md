@@ -85,6 +85,8 @@ every platform where SDL3 is enabled):
 
 ## 🛠️ Building
 
+C++ formatting and static analysis: [local commands and CI scope](docs/code-quality.md).
+
 ### Requirements
 
 - A C++23 compiler (GCC 14+, Clang 18+, or MSVC 19.4x+)
@@ -216,6 +218,7 @@ wma::WindowDetails cfg {
 | `createWindow(name)` | Create the OS window / surface |
 | `process(fn)` | Managed loop; WASM-safe (uses `requestAnimationFrame`) |
 | `pollEvents()` / `swapBuffers()` | Manual frame stepping (any platform) |
+| `waitEvents(timeoutMs)` | `pollEvents()` that sleeps up to `timeoutMs` for an event first — for a loop that redraws on change and has no frame to block on. Never waits under Emscripten |
 | `getWindowInstance()` | Native window handle |
 | `getNativeDisplayHandle()` | Native display (`Display*` / `wl_display*`, else `nullptr`) |
 | `getVulkanExtensions()` | Required Vulkan instance extensions |

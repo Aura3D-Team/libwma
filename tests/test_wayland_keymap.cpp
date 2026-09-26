@@ -23,11 +23,12 @@
 #include "wma/backends/wayland/WaylandKeyboardListener.hpp"
 #include "wma/input/keyboard/KeyEventCallback.hpp"
 
-namespace {
+namespace
+{
 
 int failures = 0;
 
-void check(bool condition, const char* description)
+void check(bool condition, const char *description)
 {
     std::printf("[%s] %s\n", condition ? "PASS" : "FAIL", description);
     if (!condition)
@@ -42,7 +43,7 @@ void check(bool condition, const char* description)
  * them from the lowest keycodes up, so keycode 9 -- the one a us layout calls
  * Escape -- is whatever character came first.
  */
-constexpr const char* kKeymap = R"(xkb_keymap {
+constexpr const char *kKeymap = R"(xkb_keymap {
   xkb_keycodes { minimum = 8; maximum = 12;
     <K9>  = 9;
     <K10> = 10;
@@ -57,7 +58,7 @@ constexpr const char* kKeymap = R"(xkb_keymap {
 
 /// Hands @p text to the listener the way a compositor does: through a
 /// read-only file descriptor plus its size.
-void sendKeymap(wma::WaylandKeyboardListener& listener, const char* text)
+void sendKeymap(wma::WaylandKeyboardListener &listener, const char *text)
 {
     const std::string keymap(text);
     const usize size = keymap.size() + 1;
@@ -76,7 +77,7 @@ void sendKeymap(wma::WaylandKeyboardListener& listener, const char* text)
         return;
     }
 
-    void* mapped = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    void *mapped = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (mapped == MAP_FAILED)
     {
         ::close(fd);
@@ -92,12 +93,13 @@ void sendKeymap(wma::WaylandKeyboardListener& listener, const char* text)
 }
 
 /// The key the listener reports for evdev code @p evdev, or KEY_UNKNOWN.
-[[nodiscard]] wma::Key pressed(wma::WaylandKeyboardListener& listener, u32 evdev)
+[[nodiscard]] wma::Key pressed(wma::WaylandKeyboardListener &listener, u32 evdev)
 {
     wma::Key seen = wma::KEY_UNKNOWN;
 
     listener.setKeyEventAction(wma::KeyEventCallback::from(
-        [&seen](const wma::WMAKeyEvent& event) {
+        [&seen](const wma::WMAKeyEvent &event)
+        {
             if (event.state == wma::KeyState::Pressed)
                 seen = event.key;
         }));
@@ -113,16 +115,14 @@ void testKeymapDecidesTheKey()
     wma::WaylandKeyboardListener listener;
     sendKeymap(listener, kKeymap);
 
-    check(pressed(listener, 1) == wma::KEY_A,
-          "the keycode at Escape's position reports the letter its keymap assigns");
+    check(pressed(listener, 1) == wma::KEY_A, "the keycode at Escape's position reports the letter its keymap assigns");
 
-    check(pressed(listener, 2) == wma::KEY_ESCAPE,
-          "and the keycode the keymap gives Escape reports Escape");
+    check(pressed(listener, 2) == wma::KEY_ESCAPE, "and the keycode the keymap gives Escape reports Escape");
 }
 
 void testUsLayoutStillMapsAsExpected()
 {
-    static constexpr const char* kUsLayout = R"(xkb_keymap {
+    static constexpr const char *kUsLayout = R"(xkb_keymap {
       xkb_keycodes { include "evdev" };
       xkb_types    { include "complete" };
       xkb_compat   { include "complete" };
@@ -148,8 +148,7 @@ void testNoKeymapFallsBackToPosition()
     //! available -- better than reporting every key as unknown.
     wma::WaylandKeyboardListener listener;
 
-    check(pressed(listener, 1) == wma::KEY_ESCAPE,
-          "with no keymap yet, the evdev position is used");
+    check(pressed(listener, 1) == wma::KEY_ESCAPE, "with no keymap yet, the evdev position is used");
 }
 
 } // namespace

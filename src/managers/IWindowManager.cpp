@@ -6,7 +6,8 @@
 #include <memory>
 #endif
 
-namespace wma {
+namespace wma
+{
 
 #ifdef __EMSCRIPTEN__
 
@@ -14,21 +15,26 @@ namespace wma {
 //! per-frame body is handed to requestAnimationFrame via emscripten_set_main_loop.
 //! The heap-allocated context outlives the call and is freed when the window
 //! signals it should close.
-namespace {
+namespace
+{
 
-struct WebLoopContext {
-    IWindowManager* manager;
+struct WebLoopContext
+{
+    IWindowManager *manager;
     std::function<void()> actions;
     FrameTimer timer;
 
-    WebLoopContext(IWindowManager* m, std::function<void()>&& a)
-        : manager(m), actions(std::move(a)), timer(*m->getWindowFlags()) {}
+    WebLoopContext(IWindowManager *m, std::function<void()> &&a)
+        : manager(m), actions(std::move(a)), timer(*m->getWindowFlags())
+    {
+    }
 };
 
-void webLoopTick(void* userData) {
-    auto* ctx = static_cast<WebLoopContext*>(userData);
+void webLoopTick(void *userData)
+{
+    auto *ctx = static_cast<WebLoopContext *>(userData);
 
-    if (ctx->manager->shouldClose()) 
+    if (ctx->manager->shouldClose())
     {
         emscripten_cancel_main_loop();
         delete ctx;
@@ -44,24 +50,24 @@ void webLoopTick(void* userData) {
 
 } // namespace
 
-void IWindowManager::process(std::function<void()>&& actions) {
+void IWindowManager::process(std::function<void()> &&actions)
+{
     //! Heap-allocated so it outlives this call. simulate_infinite_loop=true keeps
     //! process() from returning (matching desktop's blocking semantics) so the
     //! caller's window and callback stay alive while the browser drives the loop.
-    auto* ctx = new WebLoopContext(this, std::move(actions));
+    auto *ctx = new WebLoopContext(this, std::move(actions));
     //! fps = 0 => use requestAnimationFrame (respects the display refresh rate).
     emscripten_set_main_loop_arg(webLoopTick, ctx, 0, /*simulate_infinite_loop=*/true);
 }
 
 #else
 
-void IWindowManager::process(std::function<void()>&& actions) {
+void IWindowManager::process(std::function<void()> &&actions)
+{
     FrameTimer timer(*getWindowFlags());
-    timer.setTargetFPS(static_cast<u32>(getWindowDetails()->targetFPS < 0
-                                            ? 0
-                                            : getWindowDetails()->targetFPS));
+    timer.setTargetFPS(static_cast<u32>(getWindowDetails()->targetFPS < 0 ? 0 : getWindowDetails()->targetFPS));
 
-    while (!shouldClose()) 
+    while (!shouldClose())
     {
         timer.beginFrame();
         pollEvents();

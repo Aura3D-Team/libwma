@@ -1,19 +1,18 @@
 #ifdef WMA_ENABLE_SDL
 #include "wma/backends/sdl/SDLMouseListener.hpp"
-#include "wma/exceptions/WMAException.hpp"
 #include "wma/core/Types.hpp"
+#include "wma/exceptions/WMAException.hpp"
 
 #include <SDL3/SDL.h>
 
-namespace wma {
+namespace wma
+{
 
-SDLMouseListener::SDLMouseListener()
-    : MouseListener()
-    , sdlWindow_(nullptr)
+SDLMouseListener::SDLMouseListener() : MouseListener(), sdlWindow_(nullptr)
 {
 }
 
-void SDLMouseListener::initialize(SDL_Window* window)
+void SDLMouseListener::initialize(SDL_Window *window)
 {
     if (!window)
         throw InputException("Invalid SDL window pointer");
@@ -30,24 +29,31 @@ void SDLMouseListener::initialize(SDL_Window* window)
     updateCursorState();
 }
 
-void SDLMouseListener::handleEvent(const SDL_Event& event)
+void SDLMouseListener::handleEvent(const SDL_Event &event)
 {
-    switch (event.type) {
+    switch (event.type)
+    {
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
-    case SDL_EVENT_MOUSE_BUTTON_UP: {
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    {
         const i32 unifiedButton = convertButton(event.button.button);
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+        {
             dispatchButtonPress(unifiedButton);
-        } else {
+        }
+        else
+        {
             dispatchButtonRelease(unifiedButton);
         }
         break;
     }
-    case SDL_EVENT_MOUSE_MOTION: {
+    case SDL_EVENT_MOUSE_MOTION:
+    {
         f64 xpos = static_cast<f64>(event.motion.x);
         f64 ypos = static_cast<f64>(event.motion.y);
 
-        if (firstMouse_) {
+        if (firstMouse_)
+        {
             // The first relative-motion event after enabling relative mode
             // can report a spurious warp-to-center delta; discard it rather
             // than rotate the camera on it.
@@ -70,11 +76,9 @@ void SDLMouseListener::handleEvent(const SDL_Event& event)
         lastPosition_ = WMAMousePosition(xpos, ypos);
         break;
     }
-    case SDL_EVENT_MOUSE_WHEEL: {
-        WMAMouseScroll scroll(
-            static_cast<f64>(event.wheel.x),
-            static_cast<f64>(event.wheel.y)
-        );
+    case SDL_EVENT_MOUSE_WHEEL:
+    {
+        WMAMouseScroll scroll(static_cast<f64>(event.wheel.x), static_cast<f64>(event.wheel.y));
         dispatchScroll(scroll);
         break;
     }
@@ -85,11 +89,15 @@ void SDLMouseListener::handleEvent(const SDL_Event& event)
 
 void SDLMouseListener::updateCursorState()
 {
-    if (sdlWindow_) {
-        if (cursorEnabled_) {
+    if (sdlWindow_)
+    {
+        if (cursorEnabled_)
+        {
             SDL_ShowCursor();
             SDL_SetWindowRelativeMouseMode(sdlWindow_, false);
-        } else {
+        }
+        else
+        {
             SDL_HideCursor();
             SDL_SetWindowRelativeMouseMode(sdlWindow_, true);
         }
@@ -98,13 +106,20 @@ void SDLMouseListener::updateCursorState()
 
 i32 SDLMouseListener::convertButton(i32 sdlButton) const
 {
-    switch (sdlButton) {
-    case SDL_BUTTON_LEFT:   return MouseButton::WMALeft;
-    case SDL_BUTTON_RIGHT:  return MouseButton::WMARight;
-    case SDL_BUTTON_MIDDLE: return MouseButton::WMAMiddle;
-    case SDL_BUTTON_X1:     return MouseButton::WMAButton4;
-    case SDL_BUTTON_X2:     return MouseButton::WMAButton5;
-    default:                return sdlButton;
+    switch (sdlButton)
+    {
+    case SDL_BUTTON_LEFT:
+        return MouseButton::WMALeft;
+    case SDL_BUTTON_RIGHT:
+        return MouseButton::WMARight;
+    case SDL_BUTTON_MIDDLE:
+        return MouseButton::WMAMiddle;
+    case SDL_BUTTON_X1:
+        return MouseButton::WMAButton4;
+    case SDL_BUTTON_X2:
+        return MouseButton::WMAButton5;
+    default:
+        return sdlButton;
     }
 }
 

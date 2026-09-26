@@ -15,13 +15,15 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 int g_failures = 0;
 
-void expect(bool condition, const char* name)
+void expect(bool condition, const char *name)
 {
-    if (condition) {
+    if (condition)
+    {
         std::printf("ok   %s\n", name);
         return;
     }
@@ -33,8 +35,10 @@ void expect(bool condition, const char* name)
 //! tell which generation of callback produced a buffer.
 [[nodiscard]] wma::AudioMixCallback stamping(f32 marker)
 {
-    return [marker](std::span<f32> out) {
-        for (f32& sample : out) sample = marker;
+    return [marker](std::span<f32> out)
+    {
+        for (f32 &sample : out)
+            sample = marker;
     };
 }
 
@@ -46,7 +50,8 @@ void testSilenceWithNoCallback()
     slot.invoke(std::span<f32>{buffer});
 
     bool allZero = true;
-    for (const f32 sample : buffer) allZero = allZero && (sample == 0.0f);
+    for (const f32 sample : buffer)
+        allZero = allZero && (sample == 0.0f);
 
     //! Not merely "left alone": an unfilled buffer replays the previous period.
     expect(allZero, "no callback installed writes silence");
@@ -101,28 +106,32 @@ void testConcurrentReplacement()
     std::atomic<bool> done{false};
     std::atomic<bool> torn{false};
     std::atomic<bool> wentBackwards{false};
-    std::atomic<int>  highestSeen{0};
+    std::atomic<int> highestSeen{0};
 
-    std::thread audioThread([&] {
-        std::vector<f32> buffer(64, 0.0f);
-        f32 previous = 0.0f;
-
-        while (!done.load(std::memory_order_relaxed))
+    std::thread audioThread(
+        [&]
         {
-            slot.invoke(std::span<f32>{buffer});
+            std::vector<f32> buffer(64, 0.0f);
+            f32 previous = 0.0f;
 
-            const f32 first = buffer[0];
-            for (const f32 sample : buffer)
+            while (!done.load(std::memory_order_relaxed))
             {
-                if (sample != first) torn.store(true, std::memory_order_relaxed);
+                slot.invoke(std::span<f32>{buffer});
+
+                const f32 first = buffer[0];
+                for (const f32 sample : buffer)
+                {
+                    if (sample != first)
+                        torn.store(true, std::memory_order_relaxed);
+                }
+
+                if (first < previous)
+                    wentBackwards.store(true, std::memory_order_relaxed);
+                previous = first;
+
+                highestSeen.store(static_cast<int>(first), std::memory_order_relaxed);
             }
-
-            if (first < previous) wentBackwards.store(true, std::memory_order_relaxed);
-            previous = first;
-
-            highestSeen.store(static_cast<int>(first), std::memory_order_relaxed);
-        }
-    });
+        });
 
     for (int generation = 1; generation <= kGenerations; ++generation)
         slot.store(stamping(static_cast<f32>(generation)));
@@ -146,7 +155,8 @@ int main()
     testReplaceAndClear();
     testConcurrentReplacement();
 
-    if (g_failures > 0) {
+    if (g_failures > 0)
+    {
         std::printf("\n%d failure(s)\n", g_failures);
         return 1;
     }

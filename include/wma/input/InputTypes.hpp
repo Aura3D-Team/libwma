@@ -3,10 +3,11 @@
 
 #include <cstdint>
 
-#include <ink/ink_base.hpp>
 #include "wma/input/keyboard/Keys.h"
+#include <ink/ink_base.hpp>
 
-namespace wma {
+namespace wma
+{
 
 using InputContextId = u32;
 

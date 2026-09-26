@@ -85,6 +85,8 @@ every platform where SDL3 is enabled):
 
 ## 🛠️ Building
 
+C++ formatting and static analysis: [local commands and CI scope](docs/code-quality.md).
+
 ### Requirements
 
 - A C++23 compiler (GCC 14+, Clang 18+, or MSVC 19.4x+)

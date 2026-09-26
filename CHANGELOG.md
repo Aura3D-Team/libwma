@@ -2,10 +2,11 @@
 
 All notable changes to libwma are documented in this file.
 
-## [Unreleased]
+## [0.4.0]
 
 ### Added
 
+- C++ linting with `clang-tidy-21` and formatting with `clang-format-21`, matching Aura3D's rules, with local commands and CI checks for changed code
 - `IWindowManager::waitEvents(timeoutMs)`: `pollEvents()` that first sleeps up to `timeoutMs` for an event, for a client that redraws only on change and so has no frame to block on. Wayland waits on the display fd, X11 on the connection, GLFW through `glfwWaitEventsTimeout`, SDL3 through `SDL_WaitEventTimeout`; under Emscripten it never waits, since the browser owns the loop
 
 ### Fixed

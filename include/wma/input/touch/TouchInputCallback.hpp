@@ -6,28 +6,35 @@
 #include "wma/core/Types.hpp"
 #include "wma/input/touch/TouchTypes.hpp"
 
-namespace wma {
+namespace wma
+{
 
-struct TouchInputCallback {
-    using Fn = void(*)(void*, const WMATouchPoint&);
+struct TouchInputCallback
+{
+    using Fn = void (*)(void *, const WMATouchPoint &);
 
     Fn fn = nullptr;
-    void* data = nullptr;
+    void *data = nullptr;
     std::shared_ptr<void> storage_;
 
     constexpr TouchInputCallback() = default;
 
-    TouchInputCallback(Fn callback, void* userData) noexcept
-        : fn(callback), data(userData) {}
-
-    void operator()(const WMATouchPoint& point) const noexcept(false) {
-        if (fn) [[likely]] fn(data, point);
+    TouchInputCallback(Fn callback, void *userData) noexcept : fn(callback), data(userData)
+    {
     }
 
-    [[nodiscard]] bool valid() const noexcept { return fn != nullptr; }
+    void operator()(const WMATouchPoint &point) const noexcept(false)
+    {
+        if (fn) [[likely]]
+            fn(data, point);
+    }
 
-    static TouchInputCallback from(
-        wma::move_only_function<void(const WMATouchPoint&)> callback);
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return fn != nullptr;
+    }
+
+    static TouchInputCallback from(wma::move_only_function<void(const WMATouchPoint &)> callback);
 };
 
 } // namespace wma

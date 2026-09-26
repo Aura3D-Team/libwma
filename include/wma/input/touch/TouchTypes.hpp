@@ -3,7 +3,8 @@
 
 #include <ink/ink_base.hpp>
 
-namespace wma {
+namespace wma
+{
 
 //! Stable per-finger identifier: the same value is reported for every event
 //! belonging to one continuous press, so callers can track several fingers at
@@ -13,7 +14,8 @@ using TouchFingerId = i64;
 
 //! A single finger's state. Coordinates are in window pixels, matching
 //! WMAMousePosition, rather than SDL's normalized 0..1 touch range.
-struct WMATouchPoint {
+struct WMATouchPoint
+{
     TouchFingerId fingerId = 0;
     f64 x = 0.0;
     f64 y = 0.0;
@@ -22,9 +24,10 @@ struct WMATouchPoint {
 
     constexpr WMATouchPoint() noexcept = default;
 
-    constexpr WMATouchPoint(TouchFingerId fingerId, f64 x, f64 y,
-                            f64 deltaX = 0.0, f64 deltaY = 0.0) noexcept
-        : fingerId(fingerId), x(x), y(y), deltaX(deltaX), deltaY(deltaY) {}
+    constexpr WMATouchPoint(TouchFingerId fingerId, f64 x, f64 y, f64 deltaX = 0.0, f64 deltaY = 0.0) noexcept
+        : fingerId(fingerId), x(x), y(y), deltaX(deltaX), deltaY(deltaY)
+    {
+    }
 };
 
 } // namespace wma

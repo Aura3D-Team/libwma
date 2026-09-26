@@ -48,6 +48,7 @@ jobs:
           cmake -S . -B build/linux/debug -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DCMAKE_CXX_SCAN_FOR_MODULES=OFF
           -DWMA_BUILD_EXAMPLES=ON
           -DWMA_BUILD_TESTS=ON
           -DWMA_ENABLE_SDL=ON

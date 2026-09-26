@@ -3,15 +3,18 @@
 
 #include <vector>
 
+#include "MouseAction.hpp"
 #include "wma/input/InputBindingTable.hpp"
 #include "wma/input/InputContextStack.hpp"
 #include "wma/input/InputTypes.hpp"
-#include "MouseAction.hpp"
 
-namespace wma {
+namespace wma
+{
 
-struct PendingEvent {
-    enum WMAType {
+struct PendingEvent
+{
+    enum WMAType
+    {
         WMANone = 0,
         WMAMove,
         WMAScroll,
@@ -20,32 +23,41 @@ struct PendingEvent {
     } type = WMANone;
 
     WMAMousePosition position{};
-    WMAMouseScroll   scroll{};
+    WMAMouseScroll scroll{};
     i32 button = -1;
 
     constexpr PendingEvent() = default;
-    constexpr explicit PendingEvent(WMAType t) : type(t) {}
-    constexpr PendingEvent(WMAType t, const WMAMousePosition& pos) : type(t), position(pos) {}
-    constexpr PendingEvent(WMAType t, const WMAMouseScroll& s)     : type(t), scroll(s)    {}
-    constexpr PendingEvent(WMAType t, i32 btn)                     : type(t), button(btn)  {}
+    constexpr explicit PendingEvent(WMAType t) : type(t)
+    {
+    }
+    constexpr PendingEvent(WMAType t, const WMAMousePosition &pos) : type(t), position(pos)
+    {
+    }
+    constexpr PendingEvent(WMAType t, const WMAMouseScroll &s) : type(t), scroll(s)
+    {
+    }
+    constexpr PendingEvent(WMAType t, i32 btn) : type(t), button(btn)
+    {
+    }
 };
 
-class MouseListener {
-public:
+class MouseListener
+{
+  public:
     MouseListener();
     virtual ~MouseListener();
 
-    MouseListener(const MouseListener&)            = delete;
-    MouseListener& operator=(const MouseListener&) = delete;
-    MouseListener(MouseListener&&)                 = default;
-    MouseListener& operator=(MouseListener&&)      = default;
+    MouseListener(const MouseListener &) = delete;
+    MouseListener &operator=(const MouseListener &) = delete;
+    MouseListener(MouseListener &&) = default;
+    MouseListener &operator=(MouseListener &&) = default;
 
     //! Context management.
     [[nodiscard]] InputContextId createContext();
     void setActiveContext(InputContextId context);
     void pushContext(InputContextId context);
     void popContext();
-    [[nodiscard]] InputContextId getActiveContext()   const;
+    [[nodiscard]] InputContextId getActiveContext() const;
     [[nodiscard]] InputContextId getResolvedContext() const;
 
     //! Binding.
@@ -86,15 +98,15 @@ public:
     void setSensitivity(f64 sensitivity);
     [[nodiscard]] f64 getSensitivity() const;
 
-    void processPendingEvents(const PendingEvent& event);
+    void processPendingEvents(const PendingEvent &event);
 
-protected:
+  protected:
     virtual void updateCursorState() = 0;
 
     void dispatchButtonPress(i32 button);
     void dispatchButtonRelease(i32 button);
-    void dispatchMove(const WMAMousePosition& position);
-    void dispatchScroll(const WMAMouseScroll& scroll);
+    void dispatchMove(const WMAMousePosition &position);
+    void dispatchScroll(const WMAMouseScroll &scroll);
 
     void ensureContextCapacity(InputContextId context);
 
@@ -111,8 +123,8 @@ protected:
     WMAMouseScroll accumulatedScroll_{};
 
     bool cursorEnabled_ = true;
-    f64  sensitivity_   = 1.0;
-    bool firstMouse_    = true;
+    f64 sensitivity_ = 1.0;
+    bool firstMouse_ = true;
 };
 
 } // namespace wma

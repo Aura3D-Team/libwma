@@ -15,7 +15,8 @@
 //! When within this many ms of the target, stop sleeping and busy-spin for accuracy.
 #define LIMIT_SPIN_LOOP_DURATION 2e-3
 
-namespace wma {
+namespace wma
+{
 
 /**
  * @brief Measures per-frame delta time / FPS and (on desktop) paces the loop.
@@ -24,24 +25,30 @@ namespace wma {
  * browser already paces the loop via requestAnimationFrame and sleeping/spinning
  * the single browser thread would freeze the tab.
  */
-class FrameTimer {
-public:
+class FrameTimer
+{
+  public:
     using clock = std::chrono::steady_clock;
 
-    explicit FrameTimer(WindowFlags& wFlags) noexcept : 
-        windowFlags_(wFlags),
-        lastFrameStart_(clock::now()),
-        frameStart_(lastFrameStart_) {}
+    explicit FrameTimer(WindowFlags &wFlags) noexcept
+        : windowFlags_(wFlags), lastFrameStart_(clock::now()), frameStart_(lastFrameStart_)
+    {
+    }
 
-    void setTargetFPS(u32 fps) noexcept {
+    void setTargetFPS(u32 fps) noexcept
+    {
         targetFrameTime_ = std::chrono::duration<f64, std::milli>(fps > 0 ? 1000.0 / fps : 0.0);
     }
 
     //! Mark the start of a frame. Call before polling/updating.
-    void beginFrame() noexcept { frameStart_ = clock::now(); }
+    void beginFrame() noexcept
+    {
+        frameStart_ = clock::now();
+    }
 
     //! Close the frame: update deltaTime/fps and (off WASM) pace the loop.
-    void endFrame() {
+    void endFrame()
+    {
         std::chrono::duration<f64, std::milli> elapsed = frameStart_ - lastFrameStart_;
 
         // Instantaneous delta time (needed every frame for physics/movement)
@@ -52,9 +59,10 @@ public:
         accumulatedTime_ += windowFlags_.deltaTime;
         frameCount_++;
 
-        if (accumulatedTime_ >= 500.0) {
+        if (accumulatedTime_ >= 500.0)
+        {
             windowFlags_.fps = (frameCount_ * 1000.0) / accumulatedTime_;
-            
+
             // Reset for the next 0.5s window
             accumulatedTime_ = 0.0;
             frameCount_ = 0;
@@ -80,8 +88,8 @@ public:
 #endif
     }
 
-private:
-    WindowFlags& windowFlags_;
+  private:
+    WindowFlags &windowFlags_;
     std::chrono::duration<f64, std::milli> targetFrameTime_{0.0}; //!< 0 => unlimited
     clock::time_point lastFrameStart_;
     clock::time_point frameStart_;

@@ -30,6 +30,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Trust checkout for Git commands
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install C++ quality tools
         run: |
           apt-get update

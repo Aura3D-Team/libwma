@@ -371,11 +371,15 @@ void WaylandWindowManager::dispatch(int timeoutMs)
 
     while (wl_display_prepare_read(display_) != 0)
     {
-        if (wl_display_dispatch_pending(display_) < 0)
+        const int dispatched = wl_display_dispatch_pending(display_);
+        if (dispatched < 0)
         {
             windowShouldClose_ = true;
             return;
         }
+        // Let the caller react to queued events without waiting for another one.
+        if (dispatched > 0)
+            timeoutMs = 0;
     }
 
     if (wl_display_flush(display_) < 0 && errno != EAGAIN)

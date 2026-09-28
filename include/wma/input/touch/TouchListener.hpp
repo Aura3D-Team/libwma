@@ -8,7 +8,8 @@
 #include "wma/input/touch/TouchInputCallback.hpp"
 #include "wma/input/touch/TouchTypes.hpp"
 
-namespace wma {
+namespace wma
+{
 
 /**
  * @class TouchListener
@@ -28,22 +29,23 @@ namespace wma {
  * Contexts work exactly like MouseListener's/KeyboardListener's: bindings live
  * per @ref InputContextId, so a menu can shadow gameplay bindings and pop back.
  */
-class TouchListener {
-public:
+class TouchListener
+{
+  public:
     TouchListener();
     virtual ~TouchListener();
 
-    TouchListener(const TouchListener&)            = delete;
-    TouchListener& operator=(const TouchListener&) = delete;
-    TouchListener(TouchListener&&)                 = default;
-    TouchListener& operator=(TouchListener&&)      = default;
+    TouchListener(const TouchListener &) = delete;
+    TouchListener &operator=(const TouchListener &) = delete;
+    TouchListener(TouchListener &&) = default;
+    TouchListener &operator=(TouchListener &&) = default;
 
     //! Context management.
     [[nodiscard]] InputContextId createContext();
     void setActiveContext(InputContextId context);
     void pushContext(InputContextId context);
     void popContext();
-    [[nodiscard]] InputContextId getActiveContext()   const;
+    [[nodiscard]] InputContextId getActiveContext() const;
     [[nodiscard]] InputContextId getResolvedContext() const;
 
     //! A finger touched down.
@@ -59,10 +61,10 @@ public:
     void clearAllActions();
     void clearAllActions(InputContextId context);
 
-protected:
-    void dispatchDown(const WMATouchPoint& point);
-    void dispatchMove(const WMATouchPoint& point);
-    void dispatchUp(const WMATouchPoint& point);
+  protected:
+    void dispatchDown(const WMATouchPoint &point);
+    void dispatchMove(const WMATouchPoint &point);
+    void dispatchUp(const WMATouchPoint &point);
 
     void ensureContextCapacity(InputContextId context);
 

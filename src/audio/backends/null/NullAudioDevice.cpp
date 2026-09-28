@@ -1,13 +1,14 @@
 #include "wma/audio/backends/null/NullAudioDevice.hpp"
 
-namespace wma {
+namespace wma
+{
 
 NullAudioDevice::~NullAudioDevice()
 {
     NullAudioDevice::close();
 }
 
-WmaCode NullAudioDevice::open(const AudioDeviceConfig& config)
+WmaCode NullAudioDevice::open(const AudioDeviceConfig &config)
 {
     if (!config.valid())
         return WmaCode::Error;
@@ -23,7 +24,7 @@ WmaCode NullAudioDevice::open(const AudioDeviceConfig& config)
 void NullAudioDevice::close() noexcept
 {
     _running = false;
-    _open    = false;
+    _open = false;
     _scratch.clear();
     _scratch.shrink_to_fit();
 }
@@ -54,7 +55,7 @@ void NullAudioDevice::setMixCallback(AudioMixCallback callback)
     _mixCallback = std::move(callback);
 }
 
-const AudioDeviceConfig& NullAudioDevice::getConfig() const noexcept
+const AudioDeviceConfig &NullAudioDevice::getConfig() const noexcept
 {
     return _config;
 }

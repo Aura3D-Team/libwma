@@ -7,18 +7,20 @@ struct SDL_Window;
 struct SDL_KeyboardEvent;
 struct SDL_TextInputEvent;
 
-namespace wma {
+namespace wma
+{
 
-class SDLKeyboardListener : public KeyboardListener {
-public:
+class SDLKeyboardListener : public KeyboardListener
+{
+  public:
     SDLKeyboardListener();
     ~SDLKeyboardListener() override = default;
 
-    void initialize(SDL_Window* window);
-    void handleKeyEvent(const SDL_KeyboardEvent& keyEvent);
+    void initialize(SDL_Window *window);
+    void handleKeyEvent(const SDL_KeyboardEvent &keyEvent);
 
     //! Decodes SDL's UTF-8 commit into codepoints and dispatches each.
-    void handleTextInputEvent(const SDL_TextInputEvent& textEvent);
+    void handleTextInputEvent(const SDL_TextInputEvent &textEvent);
 
     /**
      * @brief Starts or stops SDL's text-input machinery for this window.
@@ -30,10 +32,13 @@ public:
      */
     void setTextInputEnabled(bool enabled);
 
-    [[nodiscard]] bool isTextInputEnabled() const noexcept { return textInputEnabled_; }
+    [[nodiscard]] bool isTextInputEnabled() const noexcept
+    {
+        return textInputEnabled_;
+    }
 
-private:
-    SDL_Window* sdlWindow_ = nullptr;
+  private:
+    SDL_Window *sdlWindow_ = nullptr;
     bool textInputEnabled_ = false;
 };
 

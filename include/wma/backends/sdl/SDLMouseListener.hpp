@@ -6,21 +6,23 @@
 struct SDL_Window;
 union SDL_Event;
 
-namespace wma {
+namespace wma
+{
 
-class SDLMouseListener : public MouseListener {
-public:
+class SDLMouseListener : public MouseListener
+{
+  public:
     SDLMouseListener();
     ~SDLMouseListener() override = default;
 
-    void initialize(SDL_Window* window);
-    void handleEvent(const SDL_Event& event);
+    void initialize(SDL_Window *window);
+    void handleEvent(const SDL_Event &event);
 
-protected:
+  protected:
     void updateCursorState() override;
 
-private:
-    SDL_Window* sdlWindow_ = nullptr;
+  private:
+    SDL_Window *sdlWindow_ = nullptr;
     i32 convertButton(i32 sdlButton) const;
 };
 

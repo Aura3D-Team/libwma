@@ -8,21 +8,23 @@
 #include "wma/audio/backends/null/NullAudioDevice.hpp"
 
 #ifdef WMA_ENABLE_ALSA
-    #include "wma/audio/backends/alsa/AlsaAudioDevice.hpp"
+#include "wma/audio/backends/alsa/AlsaAudioDevice.hpp"
 #endif
 #ifdef WMA_ENABLE_SDL
-    #include "wma/audio/backends/sdl/SDLAudioDevice.hpp"
+#include "wma/audio/backends/sdl/SDLAudioDevice.hpp"
 #endif
 
 #include <array>
 
 #include <ink/Inkogger.h>
 
-namespace wma {
+namespace wma
+{
 
 std::unique_ptr<IAudioDevice> createAudioDevice(AudioBackend backend)
 {
-    switch (backend) {
+    switch (backend)
+    {
 #ifdef WMA_ENABLE_ALSA
     case AudioBackend::Alsa:
         return std::make_unique<AlsaAudioDevice>();
@@ -57,30 +59,25 @@ AudioBackend getDefaultAudioBackend() noexcept
 
 bool isAudioBackendAvailable(AudioBackend backend) noexcept
 {
-    switch (backend) {
-#ifdef WMA_ENABLE_ALSA
-    case AudioBackend::Alsa: return true;
-#endif
-#ifdef WMA_ENABLE_SDL
-    case AudioBackend::Sdl3: return true;
-#endif
-    case AudioBackend::Null: return true;
-    default: return false;
-    }
+    return backend == AudioBackend::Null || (backend == AudioBackend::Alsa && WMA_HAS_ALSA) ||
+           (backend == AudioBackend::Sdl3 && WMA_HAS_SDL);
 }
 
-const char* audioBackendName(AudioBackend backend) noexcept
+const char *audioBackendName(AudioBackend backend) noexcept
 {
-    switch (backend) {
-    case AudioBackend::Alsa: return "ALSA";
-    case AudioBackend::Sdl3: return "SDL3";
-    case AudioBackend::Null: return "Null";
+    switch (backend)
+    {
+    case AudioBackend::Alsa:
+        return "ALSA";
+    case AudioBackend::Sdl3:
+        return "SDL3";
+    case AudioBackend::Null:
+        return "Null";
     }
     return "Unknown";
 }
 
-std::unique_ptr<IAudioDevice> openAudioDevice(const AudioDeviceConfig& config,
-                                              AudioBackend preferred)
+std::unique_ptr<IAudioDevice> openAudioDevice(const AudioDeviceConfig &config, AudioBackend preferred)
 {
     //! Preference first, then the rest in descending order of directness. Null
     //! anchors the chain: it cannot fail to open, so this never returns null.
@@ -108,8 +105,8 @@ std::unique_ptr<IAudioDevice> openAudioDevice(const AudioDeviceConfig& config,
         {
             if (backend != preferred)
             {
-                INK_WARN << "[wma] audio backend " << audioBackendName(preferred)
-                         << " unavailable; using " << audioBackendName(backend) << " instead";
+                INK_WARN << "[wma] audio backend " << audioBackendName(preferred) << " unavailable; using "
+                         << audioBackendName(backend) << " instead";
             }
             return device;
         }

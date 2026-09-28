@@ -6,7 +6,8 @@
 #include "wma/core/Types.hpp"
 #include "wma/input/keyboard/KeyTypes.hpp"
 
-namespace wma {
+namespace wma
+{
 
 /**
  * @brief Receives every key event, rather than one bound key.
@@ -20,25 +21,32 @@ namespace wma {
  * Follows @ref InputCallback's representation: a raw function pointer plus
  * userdata on the fast path, with capturing lambdas kept alive in storage_.
  */
-struct KeyEventCallback {
-    using Fn = void(*)(void*, const WMAKeyEvent&);
+struct KeyEventCallback
+{
+    using Fn = void (*)(void *, const WMAKeyEvent &);
 
     Fn fn = nullptr;
-    void* data = nullptr;
+    void *data = nullptr;
     std::shared_ptr<void> storage_;
 
     constexpr KeyEventCallback() = default;
 
-    KeyEventCallback(Fn callback, void* userData) noexcept
-        : fn(callback), data(userData) {}
-
-    void operator()(const WMAKeyEvent& event) const noexcept(false) {
-        if (fn) [[likely]] fn(data, event);
+    KeyEventCallback(Fn callback, void *userData) noexcept : fn(callback), data(userData)
+    {
     }
 
-    [[nodiscard]] bool valid() const noexcept { return fn != nullptr; }
+    void operator()(const WMAKeyEvent &event) const noexcept(false)
+    {
+        if (fn) [[likely]]
+            fn(data, event);
+    }
 
-    static KeyEventCallback from(wma::move_only_function<void(const WMAKeyEvent&)> callback);
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return fn != nullptr;
+    }
+
+    static KeyEventCallback from(wma::move_only_function<void(const WMAKeyEvent &)> callback);
 };
 
 } // namespace wma

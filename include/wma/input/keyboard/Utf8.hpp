@@ -26,7 +26,8 @@
  * ~40 lines below stay.
  */
 
-namespace wma::utf8 {
+namespace wma::utf8
+{
 
 /**
  * @brief Why @ref decodeOne rejected a sequence; @ref DecodeError::Ok means it did not.
@@ -36,23 +37,28 @@ namespace wma::utf8 {
  * includes it before this header. Renaming it back would break that
  * translation unit and nothing else, which makes it a trap worth naming here.
  */
-enum class DecodeError : u8 {
+enum class DecodeError : u8
+{
     Ok = 0,
-    Truncated,            //!< Sequence runs past the end of the buffer.
-    InvalidLead,          //!< Continuation byte with no lead, or a 5/6-byte form.
-    InvalidContinuation,  //!< A byte inside the sequence is not 10xxxxxx.
-    Overlong,             //!< Encoded longer than the value requires.
-    Surrogate,            //!< U+D800..U+DFFF, which UTF-8 must never carry.
-    OutOfRange            //!< Above U+10FFFF.
+    Truncated,           //!< Sequence runs past the end of the buffer.
+    InvalidLead,         //!< Continuation byte with no lead, or a 5/6-byte form.
+    InvalidContinuation, //!< A byte inside the sequence is not 10xxxxxx.
+    Overlong,            //!< Encoded longer than the value requires.
+    Surrogate,           //!< U+D800..U+DFFF, which UTF-8 must never carry.
+    OutOfRange           //!< Above U+10FFFF.
 };
 
 /// One step of @ref decodeOne: the scalar value, where to resume, and why not.
-struct DecodeResult {
-    Codepoint   codepoint = 0;  //!< Valid only when @ref ok() is true.
-    usize       next      = 0;  //!< Index to resume decoding at.
-    DecodeError error     = DecodeError::Ok;
+struct DecodeResult
+{
+    Codepoint codepoint = 0; //!< Valid only when @ref ok() is true.
+    usize next = 0;          //!< Index to resume decoding at.
+    DecodeError error = DecodeError::Ok;
 
-    [[nodiscard]] constexpr bool ok() const noexcept { return error == DecodeError::Ok; }
+    [[nodiscard]] constexpr bool ok() const noexcept
+    {
+        return error == DecodeError::Ok;
+    }
 };
 
 /**
@@ -88,28 +94,28 @@ struct DecodeResult {
         return {.codepoint = static_cast<Codepoint>(lead), .next = index + 1u};
 
     u32 accumulator = 0;
-    usize extraBytes  = 0;
-    u32 lowerBound  = 0; //! Smallest value legally encodable at this length.
+    usize extraBytes = 0;
+    u32 lowerBound = 0; //! Smallest value legally encodable at this length.
 
-    if ((lead & 0xE0u) == 0xC0u) 
+    if ((lead & 0xE0u) == 0xC0u)
     {
-        accumulator = lead & 0x1Fu; 
-        extraBytes = 1; 
+        accumulator = lead & 0x1Fu;
+        extraBytes = 1;
         lowerBound = 0x80u;
-    } 
-    else if ((lead & 0xF0u) == 0xE0u) 
+    }
+    else if ((lead & 0xF0u) == 0xE0u)
     {
-        accumulator = lead & 0x0Fu; 
-        extraBytes = 2; 
+        accumulator = lead & 0x0Fu;
+        extraBytes = 2;
         lowerBound = 0x800u;
-    } 
-    else if ((lead & 0xF8u) == 0xF0u) 
+    }
+    else if ((lead & 0xF8u) == 0xF0u)
     {
-        accumulator = lead & 0x07u; 
-        extraBytes = 3; 
+        accumulator = lead & 0x07u;
+        extraBytes = 3;
         lowerBound = 0x10000u;
-    } 
-    else 
+    }
+    else
     {
         return {.next = index + 1u, .error = DecodeError::InvalidLead};
     }
@@ -171,8 +177,7 @@ struct DecodeResult {
  * @param emit  Invoked as emit(Codepoint) for each scalar value decoded.
  */
 template <std::invocable<Codepoint> Emit>
-constexpr void decode(std::string_view text, Emit&& emit)
-    noexcept(std::is_nothrow_invocable_v<Emit&, Codepoint>)
+constexpr void decode(std::string_view text, Emit &&emit) noexcept(std::is_nothrow_invocable_v<Emit &, Codepoint>)
 {
     usize index = 0;
 
@@ -194,15 +199,15 @@ constexpr void decode(std::string_view text, Emit&& emit)
 /// Bytes @p codepoint encodes to, or 0 if it is not a Unicode scalar value.
 [[nodiscard]] constexpr usize encodedLength(Codepoint codepoint) noexcept
 {
-    if (codepoint < 0x80u)     
+    if (codepoint < 0x80u)
         return 1;
-    if (codepoint < 0x800u)    
+    if (codepoint < 0x800u)
         return 2;
-    if (codepoint - 0xD800u < 0x800u) 
+    if (codepoint - 0xD800u < 0x800u)
         return 0; //! Surrogate half.
-    if (codepoint < 0x10000u)  
+    if (codepoint < 0x10000u)
         return 3;
-    if (codepoint <= 0x10FFFFu) 
+    if (codepoint <= 0x10FFFFu)
         return 4;
 
     return 0;
@@ -226,26 +231,26 @@ constexpr void decode(std::string_view text, Emit&& emit)
 
     switch (length)
     {
-        case 1:
-            out[0] = static_cast<char>(codepoint);
-            break;
-        case 2:
-            out[0] = static_cast<char>(0xC0u | (codepoint >> 6));
-            out[1] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
-            break;
-        case 3:
-            out[0] = static_cast<char>(0xE0u | (codepoint >> 12));
-            out[1] = static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
-            out[2] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
-            break;
-        case 4:
-            out[0] = static_cast<char>(0xF0u | (codepoint >> 18));
-            out[1] = static_cast<char>(0x80u | ((codepoint >> 12) & 0x3Fu));
-            out[2] = static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
-            out[3] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
-            break;
-        default:
-            break;
+    case 1:
+        out[0] = static_cast<char>(codepoint);
+        break;
+    case 2:
+        out[0] = static_cast<char>(0xC0u | (codepoint >> 6));
+        out[1] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
+        break;
+    case 3:
+        out[0] = static_cast<char>(0xE0u | (codepoint >> 12));
+        out[1] = static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
+        out[2] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
+        break;
+    case 4:
+        out[0] = static_cast<char>(0xF0u | (codepoint >> 18));
+        out[1] = static_cast<char>(0x80u | ((codepoint >> 12) & 0x3Fu));
+        out[2] = static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
+        out[3] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
+        break;
+    default:
+        break;
     }
 
     return length;

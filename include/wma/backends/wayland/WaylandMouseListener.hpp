@@ -5,7 +5,8 @@
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 
-namespace wma {
+namespace wma
+{
 
 /**
  * @class WaylandMouseListener
@@ -25,8 +26,9 @@ namespace wma {
  *     So "cursor hidden" is not state that can be set once at startup; it has
  *     to be re-asserted on every enter for as long as it should hold.
  */
-class WaylandMouseListener : public MouseListener {
-public:
+class WaylandMouseListener : public MouseListener
+{
+  public:
     WaylandMouseListener();
     ~WaylandMouseListener() override;
 
@@ -42,16 +44,17 @@ public:
      * @param shm        Used to load the system cursor theme. Same caveat as
      *                   @p compositor.
      */
-    void initialize(wl_pointer* pointer,
-                    wl_compositor* compositor = nullptr,
-                    wl_shm* shm = nullptr);
+    void initialize(wl_pointer *pointer, wl_compositor *compositor = nullptr, wl_shm *shm = nullptr);
 
     void detach() noexcept;
 
-    wl_pointer* getPointer() const { return pointer_; }
+    wl_pointer *getPointer() const
+    {
+        return pointer_;
+    }
 
-    void handleEnter(u32 serial, wl_surface* surface, wl_fixed_t x, wl_fixed_t y);
-    void handleLeave(u32 serial, wl_surface* surface);
+    void handleEnter(u32 serial, wl_surface *surface, wl_fixed_t x, wl_fixed_t y);
+    void handleLeave(u32 serial, wl_surface *surface);
     void handleMotion(u32 time, wl_fixed_t x, wl_fixed_t y);
     void handleButton(u32 serial, u32 time, u32 button, u32 state);
     void handleAxis(u32 time, u32 axis, wl_fixed_t value);
@@ -60,17 +63,17 @@ public:
     void handleAxisStop(u32 time, u32 axis);
     void handleAxisDiscrete(u32 axis, i32 discrete);
 
-protected:
+  protected:
     void updateCursorState() override;
 
-private:
-    wl_pointer* pointer_ = nullptr;
-    wl_surface* cursorSurface_ = nullptr;
+  private:
+    wl_pointer *pointer_ = nullptr;
+    wl_surface *cursorSurface_ = nullptr;
 
     //! Non-owning; the theme owns the images it hands out. Null when @c shm_
     //! or the theme load failed, in which case the cursor can be hidden but
     //! never restored (see initialize()'s doc comment).
-    wl_cursor_theme* cursorTheme_ = nullptr;
+    wl_cursor_theme *cursorTheme_ = nullptr;
 
     //! Serial of the most recent wl_pointer.enter -- the one wl_pointer.
     //! set_cursor must be called with. 0 (never a valid serial) until the
@@ -91,25 +94,16 @@ private:
 
     static const wl_pointer_listener pointerListener_;
 
-    static void handleEnterCallback(void* data, wl_pointer* pointer,
-                                    u32 serial, wl_surface* surface,
-                                    wl_fixed_t x, wl_fixed_t y);
-    static void handleLeaveCallback(void* data, wl_pointer* pointer,
-                                    u32 serial, wl_surface* surface);
-    static void handleMotionCallback(void* data, wl_pointer* pointer,
-                                     u32 time, wl_fixed_t x, wl_fixed_t y);
-    static void handleButtonCallback(void* data, wl_pointer* pointer,
-                                     u32 serial, u32 time,
-                                     u32 button, u32 state);
-    static void handleAxisCallback(void* data, wl_pointer* pointer,
-                                   u32 time, u32 axis, wl_fixed_t value);
-    static void handleFrameCallback(void* data, wl_pointer* pointer);
-    static void handleAxisSourceCallback(void* data, wl_pointer* pointer,
-                                         u32 axis_source);
-    static void handleAxisStopCallback(void* data, wl_pointer* pointer,
-                                       u32 time, u32 axis);
-    static void handleAxisDiscreteCallback(void* data, wl_pointer* pointer,
-                                           u32 axis, i32 discrete);
+    static void handleEnterCallback(void *data, wl_pointer *pointer, u32 serial, wl_surface *surface, wl_fixed_t x,
+                                    wl_fixed_t y);
+    static void handleLeaveCallback(void *data, wl_pointer *pointer, u32 serial, wl_surface *surface);
+    static void handleMotionCallback(void *data, wl_pointer *pointer, u32 time, wl_fixed_t x, wl_fixed_t y);
+    static void handleButtonCallback(void *data, wl_pointer *pointer, u32 serial, u32 time, u32 button, u32 state);
+    static void handleAxisCallback(void *data, wl_pointer *pointer, u32 time, u32 axis, wl_fixed_t value);
+    static void handleFrameCallback(void *data, wl_pointer *pointer);
+    static void handleAxisSourceCallback(void *data, wl_pointer *pointer, u32 axis_source);
+    static void handleAxisStopCallback(void *data, wl_pointer *pointer, u32 time, u32 axis);
+    static void handleAxisDiscreteCallback(void *data, wl_pointer *pointer, u32 axis, i32 discrete);
 
     i32 convertButton(u32 waylandButton) const;
 };

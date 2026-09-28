@@ -4,25 +4,27 @@
 #include "wma/input/mouse/MouseListener.hpp"
 #include <X11/Xlib.h>
 
-namespace wma {
+namespace wma
+{
 
-class X11MouseListener : public MouseListener {
-public:
+class X11MouseListener : public MouseListener
+{
+  public:
     X11MouseListener();
     ~X11MouseListener() override = default;
 
-    void initialize(Display* display, Window window);
-    void handleEvent(const XEvent* event);
+    void initialize(Display *display, Window window);
+    void handleEvent(const XEvent *event);
 
-protected:
+  protected:
     void updateCursorState() override;
 
-private:
-    Display* display_ = nullptr;
+  private:
+    Display *display_ = nullptr;
     Window x11Window_ = 0;
     Cursor invisibleCursor_;
 
-    Cursor createInvisibleCursor(Display* display, Window window);
+    Cursor createInvisibleCursor(Display *display, Window window);
     i32 convertButton(i32 x11Button) const;
 };
 

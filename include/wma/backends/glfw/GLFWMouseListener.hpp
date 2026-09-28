@@ -5,31 +5,33 @@
 
 struct GLFWwindow;
 
-namespace wma {
+namespace wma
+{
 
-class GLFWMouseListener : public MouseListener {
-public:
+class GLFWMouseListener : public MouseListener
+{
+  public:
     GLFWMouseListener();
     ~GLFWMouseListener() override;
 
-    void initialize(GLFWwindow* window);
+    void initialize(GLFWwindow *window);
 
-    static void glfwMouseButtonCallback(GLFWwindow* window, i32 button, i32 action, i32 mods);
-    static void glfwCursorPosCallback(GLFWwindow* window, f64 xpos, f64 ypos);
-    static void glfwScrollCallback(GLFWwindow* window, f64 xoffset, f64 yoffset);
+    static void glfwMouseButtonCallback(GLFWwindow *window, i32 button, i32 action, i32 mods);
+    static void glfwCursorPosCallback(GLFWwindow *window, f64 xpos, f64 ypos);
+    static void glfwScrollCallback(GLFWwindow *window, f64 xoffset, f64 yoffset);
 
-protected:
+  protected:
     void updateCursorState() override;
 
-private:
-    GLFWwindow* glfwWindow_ = nullptr;
+  private:
+    GLFWwindow *glfwWindow_ = nullptr;
 
     void handleButtonEvent(i32 button, i32 action, i32 mods);
     void handlePositionEvent(f64 xpos, f64 ypos);
     void handleScrollEvent(f64 xoffset, f64 yoffset);
 
     i32 convertButton(i32 glfwButton) const;
-    static GLFWMouseListener* getInstanceFromWindow(GLFWwindow* window);
+    static GLFWMouseListener *getInstanceFromWindow(GLFWwindow *window);
 };
 
 } // namespace wma

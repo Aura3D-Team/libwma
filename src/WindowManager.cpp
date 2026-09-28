@@ -6,26 +6,26 @@
 //! without having any backend SDK on its own include path.
 
 #ifdef WMA_ENABLE_GLFW
-    #include "wma/backends/glfw/GlfwWindowManager.hpp"
+#include "wma/backends/glfw/GlfwWindowManager.hpp"
 #endif
 #ifdef WMA_ENABLE_SDL
-    #include "wma/backends/sdl/SdlWindowManager.hpp"
+#include "wma/backends/sdl/SdlWindowManager.hpp"
 #endif
 #ifdef WMA_ENABLE_WAYLAND
-    #include "wma/backends/wayland/WaylandWindowManager.hpp"
+#include "wma/backends/wayland/WaylandWindowManager.hpp"
 #endif
 #ifdef WMA_ENABLE_X11
-    #include "wma/backends/x11/X11WindowManager.hpp"
+#include "wma/backends/x11/X11WindowManager.hpp"
 #endif
 
-namespace wma {
-
-std::unique_ptr<IWindowManager> createWindowManager(
-    WindowBackend backend,
-    const WindowDetails& windowDetails,
-    GraphicsAPI graphicsAPI)
+namespace wma
 {
-    switch (backend) {
+
+std::unique_ptr<IWindowManager> createWindowManager(WindowBackend backend, const WindowDetails &windowDetails,
+                                                    GraphicsAPI graphicsAPI)
+{
+    switch (backend)
+    {
 #ifdef WMA_ENABLE_GLFW
     case WindowBackend::GLFW:
         return std::make_unique<GlfwWindowManager>(windowDetails, graphicsAPI);
@@ -48,7 +48,8 @@ std::unique_ptr<IWindowManager> createWindowManager(
     throw WMAException("Requested window backend is not available or not compiled in");
 }
 
-WindowBackend getDefaultBackend() {
+WindowBackend getDefaultBackend()
+{
 #if defined(WMA_ENABLE_SDL)
     //! SDL3 is the most portable backend and the only one available on WASM/Android.
     return WindowBackend::SDL3;
@@ -63,58 +64,46 @@ WindowBackend getDefaultBackend() {
 #endif
 }
 
-bool isBackendAvailable(WindowBackend backend) noexcept {
-    switch (backend) {
-#ifdef WMA_ENABLE_GLFW
-    case WindowBackend::GLFW: return true;
-#endif
-#ifdef WMA_ENABLE_SDL
-    case WindowBackend::SDL3: return true;
-#endif
-#ifdef WMA_ENABLE_WAYLAND
-    case WindowBackend::WAYLAND: return true;
-#endif
-#ifdef WMA_ENABLE_X11
-    case WindowBackend::X11: return true;
-#endif
-    default: return false;
-    }
+bool isBackendAvailable(WindowBackend backend) noexcept
+{
+    return (backend == WindowBackend::GLFW && WMA_HAS_GLFW) || (backend == WindowBackend::SDL3 && WMA_HAS_SDL) ||
+           (backend == WindowBackend::WAYLAND && WMA_HAS_WAYLAND) || (backend == WindowBackend::X11 && WMA_HAS_X11);
 }
 
-const char* getLibraryInfo() noexcept {
-    static const char* info =
-        "WMA Window Management & Input Abstraction Library v" WMA_VERSION_STRING_FULL "\n"
-        "Backends:"
+const char *getLibraryInfo() noexcept
+{
+    static const char *info = "WMA Window Management & Input Abstraction Library v" WMA_VERSION_STRING_FULL "\n"
+                              "Backends:"
 #ifdef WMA_ENABLE_GLFW
-        " GLFW"
+                              " GLFW"
 #endif
 #ifdef WMA_ENABLE_SDL
-        " SDL3"
+                              " SDL3"
 #endif
 #ifdef WMA_ENABLE_WAYLAND
-        " Wayland"
+                              " Wayland"
 #endif
 #ifdef WMA_ENABLE_X11
-        " X11"
+                              " X11"
 #endif
-        //! Listed on their own line because audio is a separate axis from
-        //! windowing: any window backend pairs with any audio backend. Null
-        //! leads because it is the one that is always compiled in.
-        "\nAudio backends: Null"
+                              //! Listed on their own line because audio is a separate axis from
+                              //! windowing: any window backend pairs with any audio backend. Null
+                              //! leads because it is the one that is always compiled in.
+                              "\nAudio backends: Null"
 #ifdef WMA_ENABLE_ALSA
-        " ALSA"
+                              " ALSA"
 #endif
 #ifdef WMA_ENABLE_SDL
-        " SDL3"
+                              " SDL3"
 #endif
-        "\nGraphics APIs: OpenGL Vulkan CPU"
+                              "\nGraphics APIs: OpenGL Vulkan CPU"
 #if WMA_HAS_METAL
-        //! Reported from WMA_HAS_METAL rather than unconditionally: it is the only
-        //! graphics API whose availability depends on the target platform, not
-        //! just on which backends were compiled in.
-        " Metal"
+                              //! Reported from WMA_HAS_METAL rather than unconditionally: it is the only
+                              //! graphics API whose availability depends on the target platform, not
+                              //! just on which backends were compiled in.
+                              " Metal"
 #endif
-        "\nBuilt with C++23";
+                              "\nBuilt with C++23";
     return info;
 }
 

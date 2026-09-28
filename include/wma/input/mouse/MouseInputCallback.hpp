@@ -6,50 +6,63 @@
 #include "wma/core/Types.hpp"
 #include "wma/input/mouse/MouseTypes.hpp"
 
-namespace wma {
+namespace wma
+{
 
-struct MoveInputCallback {
-    using Fn = void(*)(void*, const WMAMousePosition&);
+struct MoveInputCallback
+{
+    using Fn = void (*)(void *, const WMAMousePosition &);
 
     Fn fn = nullptr;
-    void* data = nullptr;
+    void *data = nullptr;
     std::shared_ptr<void> storage_;
 
     constexpr MoveInputCallback() = default;
 
-    MoveInputCallback(Fn callback, void* userData) noexcept
-        : fn(callback), data(userData) {}
-
-    void operator()(const WMAMousePosition& position) const noexcept(false) {
-        if (fn) [[likely]] fn(data, position);
+    MoveInputCallback(Fn callback, void *userData) noexcept : fn(callback), data(userData)
+    {
     }
 
-    [[nodiscard]] bool valid() const noexcept { return fn != nullptr; }
+    void operator()(const WMAMousePosition &position) const noexcept(false)
+    {
+        if (fn) [[likely]]
+            fn(data, position);
+    }
 
-    static MoveInputCallback from(
-        wma::move_only_function<void(const WMAMousePosition&)> callback);
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return fn != nullptr;
+    }
+
+    static MoveInputCallback from(wma::move_only_function<void(const WMAMousePosition &)> callback);
 };
 
-struct ScrollInputCallback {
-    using Fn = void(*)(void*, const WMAMouseScroll&);
+struct ScrollInputCallback
+{
+    using Fn = void (*)(void *, const WMAMouseScroll &);
 
     Fn fn = nullptr;
-    void* data = nullptr;
+    void *data = nullptr;
     std::shared_ptr<void> storage_;
 
     constexpr ScrollInputCallback() = default;
 
-    ScrollInputCallback(Fn callback, void* userData) noexcept
-        : fn(callback), data(userData) {}
-
-    void operator()(const WMAMouseScroll& scroll) const noexcept(false) {
-        if (fn) [[likely]] fn(data, scroll);
+    ScrollInputCallback(Fn callback, void *userData) noexcept : fn(callback), data(userData)
+    {
     }
 
-    [[nodiscard]] bool valid() const noexcept { return fn != nullptr; }
+    void operator()(const WMAMouseScroll &scroll) const noexcept(false)
+    {
+        if (fn) [[likely]]
+            fn(data, scroll);
+    }
 
-    static ScrollInputCallback from(
-        wma::move_only_function<void(const WMAMouseScroll&)> callback);
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return fn != nullptr;
+    }
+
+    static ScrollInputCallback from(wma::move_only_function<void(const WMAMouseScroll &)> callback);
 };
 
 } // namespace wma

@@ -12,68 +12,70 @@
 
 #include <ink/Inkogger.h>
 
-namespace wma {
+namespace wma
+{
 
-namespace {
-    //! ALSA's native-endian 32-bit float. The mix callback produces f32, so
-    //! this is the format that needs no conversion in the driver.
-    constexpr snd_pcm_format_t kSampleFormat = SND_PCM_FORMAT_FLOAT;
+namespace
+{
+//! ALSA's native-endian 32-bit float. The mix callback produces f32, so
+//! this is the format that needs no conversion in the driver.
+constexpr snd_pcm_format_t kSampleFormat = SND_PCM_FORMAT_FLOAT;
 
-    //! PCM to open when the caller does not name one. "default" follows the
-    //! user's asoundrc, which is what routes correctly on a PulseAudio or
-    //! PipeWire desktop instead of grabbing the raw card.
-    constexpr const char* kDefaultDeviceName = "default";
+//! PCM to open when the caller does not name one. "default" follows the
+//! user's asoundrc, which is what routes correctly on a PulseAudio or
+//! PipeWire desktop instead of grabbing the raw card.
+constexpr const char *kDefaultDeviceName = "default";
 
-    //! Periods of slack between the application and the hardware pointer.
-    //! Three rather than the double-buffered minimum of two: the writer
-    //! thread is ordinary-priority whenever setWriterRealtimePriority()
-    //! below can't get SCHED_FIFO (the common case outside a container with
-    //! CAP_SYS_NICE), so it has no scheduling guarantee against a CPU-heavy
-    //! render thread stealing its core for longer than one period. One
-    //! extra period of buffer absorbs a missed wakeup as added latency
-    //! instead of an audible underrun.
-    constexpr u32 kPeriodsOfLatency = 3;
+//! Periods of slack between the application and the hardware pointer.
+//! Three rather than the double-buffered minimum of two: the writer
+//! thread is ordinary-priority whenever setWriterRealtimePriority()
+//! below can't get SCHED_FIFO (the common case outside a container with
+//! CAP_SYS_NICE), so it has no scheduling guarantee against a CPU-heavy
+//! render thread stealing its core for longer than one period. One
+//! extra period of buffer absorbs a missed wakeup as added latency
+//! instead of an audible underrun.
+constexpr u32 kPeriodsOfLatency = 3;
 
-    //! Best-effort real-time priority for the calling thread, so the kernel
-    //! preempts CPU-bound work (a software rasterizer with no FPS cap, say)
-    //! to let it refill the hardware buffer on schedule instead of starving
-    //! it into an underrun. Silently a no-op without CAP_SYS_NICE or an
-    //! rtprio limit -- the ordinary case in a container or unprivileged
-    //! process -- which is why kPeriodsOfLatency above does not depend on
-    //! this succeeding.
-    void setWriterRealtimePriority() noexcept
-    {
-        sched_param param{};
-        param.sched_priority = sched_get_priority_min(SCHED_FIFO) + 10;
-        pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
-    }
+//! Best-effort real-time priority for the calling thread, so the kernel
+//! preempts CPU-bound work (a software rasterizer with no FPS cap, say)
+//! to let it refill the hardware buffer on schedule instead of starving
+//! it into an underrun. Silently a no-op without CAP_SYS_NICE or an
+//! rtprio limit -- the ordinary case in a container or unprivileged
+//! process -- which is why kPeriodsOfLatency above does not depend on
+//! this succeeding.
+void setWriterRealtimePriority() noexcept
+{
+    sched_param param{};
+    param.sched_priority = sched_get_priority_min(SCHED_FIFO) + 10;
+    pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
+}
 
-    //! Reserves the last CPU for this thread, so an unrelated CPU-bound
-    //! thread elsewhere in the process (a software rasterizer with no FPS
-    //! cap, say) has to be scheduled on a *different* core rather than
-    //! merely being outranked on a shared one -- a guarantee priority alone
-    //! doesn't give, and one that (unlike SCHED_FIFO above) does not need
-    //! CAP_SYS_NICE. Skipped below two cores: there is nothing to reserve
-    //! from, and restricting the only core would just add contention with
-    //! nowhere else to run.
-    //!
-    //! Only isolates this thread, not the other side -- nothing here stops
-    //! aura3d::JobSystem's worker pool from also landing on the reserved
-    //! core, which on a fully-saturated worker count (every core requested)
-    //! it will. The absolute guarantee needs the engine's own thread pool to
-    //! leave this core out of its affinity too; this is the half wma can
-    //! give unilaterally.
-    void setWriterCoreAffinity() noexcept
-    {
-        const unsigned cores = std::thread::hardware_concurrency();
-        if (cores < 2)
-            return;
+//! Reserves the last CPU for this thread, so an unrelated CPU-bound
+//! thread elsewhere in the process (a software rasterizer with no FPS
+//! cap, say) has to be scheduled on a *different* core rather than
+//! merely being outranked on a shared one -- a guarantee priority alone
+//! doesn't give, and one that (unlike SCHED_FIFO above) does not need
+//! CAP_SYS_NICE. Skipped below two cores: there is nothing to reserve
+//! from, and restricting the only core would just add contention with
+//! nowhere else to run.
+//!
+//! Only isolates this thread, not the other side -- nothing here stops
+//! aura3d::JobSystem's worker pool from also landing on the reserved
+//! core, which on a fully-saturated worker count (every core requested)
+//! it will. The absolute guarantee needs the engine's own thread pool to
+//! leave this core out of its affinity too; this is the half wma can
+//! give unilaterally.
+void setWriterCoreAffinity() noexcept
+{
+    const unsigned cores = std::thread::hardware_concurrency();
+    if (cores < 2)
+        return;
 
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(cores - 1, &cpuset);
-        pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
-    }
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cores - 1, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+}
 } // namespace
 
 AlsaAudioDevice::~AlsaAudioDevice()
@@ -81,7 +83,7 @@ AlsaAudioDevice::~AlsaAudioDevice()
     AlsaAudioDevice::close();
 }
 
-WmaCode AlsaAudioDevice::open(const AudioDeviceConfig& config)
+WmaCode AlsaAudioDevice::open(const AudioDeviceConfig &config)
 {
     if (!config.valid())
         return WmaCode::Error;
@@ -89,7 +91,7 @@ WmaCode AlsaAudioDevice::open(const AudioDeviceConfig& config)
     if (_pcm)
         close();
 
-    const char* deviceName = config.deviceName ? config.deviceName : kDefaultDeviceName;
+    const char *deviceName = config.deviceName ? config.deviceName : kDefaultDeviceName;
 
     if (const int err = snd_pcm_open(&_pcm, deviceName, SND_PCM_STREAM_PLAYBACK, 0); err < 0)
     {
@@ -106,22 +108,16 @@ WmaCode AlsaAudioDevice::open(const AudioDeviceConfig& config)
     //! keeps AudioDeviceConfig::framesPerBuffer meaningful as the latency dial
     //! it is documented to be.
     const unsigned int latencyUs = static_cast<unsigned int>(
-        (static_cast<u64>(config.framesPerBuffer) * kPeriodsOfLatency * 1'000'000ull)
-        / config.sampleRate);
+        (static_cast<u64>(config.framesPerBuffer) * kPeriodsOfLatency * 1'000'000ull) / config.sampleRate);
 
     unsigned int rate = config.sampleRate;
 
-    if (const int err = snd_pcm_set_params(_pcm,
-                                           kSampleFormat,
-                                           SND_PCM_ACCESS_RW_INTERLEAVED,
-                                           static_cast<unsigned int>(config.channelCount),
-                                           rate,
-                                           1 /* allow the driver to resample */,
-                                           latencyUs);
+    if (const int err = snd_pcm_set_params(_pcm, kSampleFormat, SND_PCM_ACCESS_RW_INTERLEAVED,
+                                           static_cast<unsigned int>(config.channelCount), rate,
+                                           1 /* allow the driver to resample */, latencyUs);
         err < 0)
     {
-        INK_WARN << "[wma] ALSA rejected the requested format on '" << deviceName
-                 << "': " << snd_strerror(err);
+        INK_WARN << "[wma] ALSA rejected the requested format on '" << deviceName << "': " << snd_strerror(err);
         snd_pcm_close(_pcm);
         _pcm = nullptr;
         return WmaCode::Error;
@@ -143,12 +139,11 @@ WmaCode AlsaAudioDevice::open(const AudioDeviceConfig& config)
     //! do natively. A mixer that assumed the requested rate here would play
     //! every sound at the wrong pitch.
     {
-        snd_pcm_hw_params_t* hwParams = nullptr;
+        snd_pcm_hw_params_t *hwParams = nullptr;
         snd_pcm_hw_params_alloca(&hwParams);
         unsigned int actualRate = 0;
-        if (snd_pcm_hw_params_current(_pcm, hwParams) == 0
-            && snd_pcm_hw_params_get_rate(hwParams, &actualRate, nullptr) == 0
-            && actualRate > 0)
+        if (snd_pcm_hw_params_current(_pcm, hwParams) == 0 &&
+            snd_pcm_hw_params_get_rate(hwParams, &actualRate, nullptr) == 0 && actualRate > 0)
         {
             _config.sampleRate = static_cast<u32>(actualRate);
         }
@@ -156,9 +151,8 @@ WmaCode AlsaAudioDevice::open(const AudioDeviceConfig& config)
 
     _scratch.assign(_config.samplesPerBuffer(), 0.0f);
 
-    INK_INFO << "[wma] ALSA audio device opened on '" << deviceName << "': "
-             << _config.sampleRate << " Hz, " << _config.channelCount << " ch, "
-             << _config.framesPerBuffer << " frames/period";
+    INK_INFO << "[wma] ALSA audio device opened on '" << deviceName << "': " << _config.sampleRate << " Hz, "
+             << _config.channelCount << " ch, " << _config.framesPerBuffer << " frames/period";
 
     return WmaCode::Ok;
 }
@@ -195,7 +189,11 @@ WmaCode AlsaAudioDevice::start()
     }
 
     _running.store(true, std::memory_order_release);
-    _writer = std::jthread([this](std::stop_token token) { writerLoop(std::move(token)); });
+    _writer = std::jthread(
+        [this](const std::stop_token &token)
+        {
+            writerLoop(token);
+        });
 
     return WmaCode::Ok;
 }
@@ -208,7 +206,6 @@ void AlsaAudioDevice::stop() noexcept
         return;
     }
 
-    _running.store(false, std::memory_order_release);
     _writer.request_stop();
 
     //! Joined rather than interrupted: the thread can be parked inside
@@ -217,6 +214,12 @@ void AlsaAudioDevice::stop() noexcept
     //! is what makes the "callback is not running on return" postcondition
     //! true without racing the driver.
     _writer.join();
+
+    //! Cleared only after the join, so isRunning() never reports false while a
+    //! callback is still executing. Callers rely on that to decide when memory
+    //! the mix callback reads can be freed; request_stop() is what ends the
+    //! loop, so moving this later costs nothing.
+    _running.store(false, std::memory_order_release);
 
     if (_pcm)
         snd_pcm_drop(_pcm);
@@ -232,7 +235,7 @@ void AlsaAudioDevice::setMixCallback(AudioMixCallback callback)
     _mixCallback.store(std::move(callback));
 }
 
-const AudioDeviceConfig& AlsaAudioDevice::getConfig() const noexcept
+const AudioDeviceConfig &AlsaAudioDevice::getConfig() const noexcept
 {
     return _config;
 }
@@ -242,7 +245,7 @@ AudioBackend AlsaAudioDevice::getBackendType() const noexcept
     return AudioBackend::Alsa;
 }
 
-void AlsaAudioDevice::writerLoop(std::stop_token stopToken)
+void AlsaAudioDevice::writerLoop(const std::stop_token &stopToken)
 {
     setWriterRealtimePriority();
     setWriterCoreAffinity();
@@ -271,8 +274,7 @@ void AlsaAudioDevice::writerLoop(std::stop_token stopToken)
 
             if (written < 0)
             {
-                INK_WARN << "[wma] ALSA write failed unrecoverably: "
-                         << snd_strerror(static_cast<int>(written));
+                INK_WARN << "[wma] ALSA write failed unrecoverably: " << snd_strerror(static_cast<int>(written));
                 break;
             }
         }

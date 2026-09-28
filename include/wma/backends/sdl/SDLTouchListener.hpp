@@ -8,18 +8,20 @@
 struct SDL_Window;
 union SDL_Event;
 
-namespace wma {
+namespace wma
+{
 
-class SDLTouchListener : public TouchListener {
-public:
+class SDLTouchListener : public TouchListener
+{
+  public:
     SDLTouchListener() = default;
     ~SDLTouchListener() override = default;
 
-    void initialize(SDL_Window* window);
-    void handleEvent(const SDL_Event& event);
+    void initialize(SDL_Window *window);
+    void handleEvent(const SDL_Event &event);
 
-private:
-    SDL_Window* sdlWindow_ = nullptr;
+  private:
+    SDL_Window *sdlWindow_ = nullptr;
 
     //! SDL reports absolute normalized positions per finger, not deltas, so
     //! keep each active finger's last position to derive them. Keyed by

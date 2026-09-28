@@ -6,7 +6,8 @@
 #include "wma/core/Types.hpp"
 #include "wma/input/keyboard/KeyTypes.hpp"
 
-namespace wma {
+namespace wma
+{
 
 /**
  * @brief Receives one Unicode scalar value of committed text.
@@ -22,23 +23,30 @@ namespace wma {
  * Follows @ref InputCallback's representation: a raw function pointer plus
  * userdata on the fast path, with capturing lambdas kept alive in storage_.
  */
-struct TextInputCallback {
-    using Fn = void(*)(void*, Codepoint);
+struct TextInputCallback
+{
+    using Fn = void (*)(void *, Codepoint);
 
     Fn fn = nullptr;
-    void* data = nullptr;
+    void *data = nullptr;
     std::shared_ptr<void> storage_;
 
     constexpr TextInputCallback() = default;
 
-    TextInputCallback(Fn callback, void* userData) noexcept
-        : fn(callback), data(userData) {}
-
-    void operator()(Codepoint codepoint) const noexcept(false) {
-        if (fn) [[likely]] fn(data, codepoint);
+    TextInputCallback(Fn callback, void *userData) noexcept : fn(callback), data(userData)
+    {
     }
 
-    [[nodiscard]] bool valid() const noexcept { return fn != nullptr; }
+    void operator()(Codepoint codepoint) const noexcept(false)
+    {
+        if (fn) [[likely]]
+            fn(data, codepoint);
+    }
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return fn != nullptr;
+    }
 
     static TextInputCallback from(wma::move_only_function<void(Codepoint)> callback);
 };

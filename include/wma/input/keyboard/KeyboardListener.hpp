@@ -4,6 +4,7 @@
 #include <array>
 #include <vector>
 
+#include "wma/core/Types.hpp"
 #include "wma/input/InputBindingTable.hpp"
 #include "wma/input/InputContextStack.hpp"
 #include "wma/input/InputTypes.hpp"
@@ -12,26 +13,27 @@
 #include "wma/input/keyboard/KeyTypes.hpp"
 #include "wma/input/keyboard/Keys.h"
 #include "wma/input/keyboard/TextInputCallback.hpp"
-#include "wma/core/Types.hpp"
 
-namespace wma {
+namespace wma
+{
 
-class KeyboardListener {
-public:
+class KeyboardListener
+{
+  public:
     KeyboardListener();
     virtual ~KeyboardListener() = default;
 
-    KeyboardListener(const KeyboardListener&)            = delete;
-    KeyboardListener& operator=(const KeyboardListener&) = delete;
-    KeyboardListener(KeyboardListener&&)                 = default;
-    KeyboardListener& operator=(KeyboardListener&&)      = default;
+    KeyboardListener(const KeyboardListener &) = delete;
+    KeyboardListener &operator=(const KeyboardListener &) = delete;
+    KeyboardListener(KeyboardListener &&) = default;
+    KeyboardListener &operator=(KeyboardListener &&) = default;
 
     //! Context management.
     [[nodiscard]] InputContextId createContext();
     void setActiveContext(InputContextId context);
     void pushContext(InputContextId context);
     void popContext();
-    [[nodiscard]] InputContextId getActiveContext()  const;
+    [[nodiscard]] InputContextId getActiveContext() const;
     [[nodiscard]] InputContextId getResolvedContext() const;
 
     //! Binding — default context (resolved at call time).
@@ -100,7 +102,7 @@ public:
      */
     void releaseAllKeys() noexcept;
 
-protected:
+  protected:
     void dispatchKeyPress(Key key);
     void dispatchKeyRelease(Key key);
 

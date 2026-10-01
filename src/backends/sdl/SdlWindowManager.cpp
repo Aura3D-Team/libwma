@@ -8,6 +8,8 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 
+#include "backends/sdl/SdlFrameHitTest.hpp"
+
 #ifdef __APPLE__
 //! SDL's Metal helpers. Compiled in only for Apple builds: SDL_Metal_CreateView
 //! has no implementation on any other platform, so a GraphicsAPI::Metal request
@@ -50,7 +52,8 @@ SdlWindowManager::SdlWindowManager(SdlWindowManager &&other) noexcept
       metalView_(std::exchange(other.metalView_, nullptr)), metalLayer_(std::exchange(other.metalLayer_, nullptr)),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
-      touchListener_(std::move(other.touchListener_)), windowShouldClose_(other.windowShouldClose_),
+      touchListener_(std::move(other.touchListener_)), frameHitTest_(std::move(other.frameHitTest_)),
+      windowShouldClose_(other.windowShouldClose_),
       ownsSubsystem_(std::exchange(other.ownsSubsystem_, false))
 {
 }
@@ -71,6 +74,7 @@ SdlWindowManager &SdlWindowManager::operator=(SdlWindowManager &&other) noexcept
         keyboardListener_ = std::move(other.keyboardListener_);
         mouseListener_ = std::move(other.mouseListener_);
         touchListener_ = std::move(other.touchListener_);
+        frameHitTest_ = std::move(other.frameHitTest_);
         windowShouldClose_ = other.windowShouldClose_;
         ownsSubsystem_ = std::exchange(other.ownsSubsystem_, false);
     }
@@ -210,6 +214,21 @@ void SdlWindowManager::close() noexcept
     windowShouldClose_ = true;
 }
 
+bool SdlWindowManager::setHitTest(HitTest hitTest)
+{
+    if (!window_)
+        return false;
+    //! The old bridge unregisters from SDL before the new one registers.
+    frameHitTest_.reset();
+    if (!hitTest)
+        return true;
+    auto bridge = std::make_unique<sdl::FrameHitTest>(window_, std::move(hitTest));
+    if (!bridge->installed())
+        return false;
+    frameHitTest_ = std::move(bridge);
+    return true;
+}
+
 bool SdlWindowManager::setTitle(const char *title) noexcept
 {
     return window_ && title && SDL_SetWindowTitle(window_, title);
@@ -258,9 +277,18 @@ void SdlWindowManager::pollEvents()
     }
 #endif
 
+    //! Title-bar presses SDL swallowed this pump arm a double-click before the
+    //! queued events are dispatched.
+    SDL_PumpEvents();
+    if (frameHitTest_)
+        frameHitTest_->pump();
+
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
+        if (frameHitTest_ && frameHitTest_->consume(event, *this))
+            continue;
+
         switch (event.type)
         {
         case SDL_EVENT_QUIT:
@@ -573,6 +601,8 @@ WmaCode SdlWindowManager::destroy()
 {
     windowShouldClose_ = true;
 
+    //! Before the window and SDL's Wayland connection it observes.
+    frameHitTest_.reset();
     if (mouseListener_)
         mouseListener_->releaseCursors();
 

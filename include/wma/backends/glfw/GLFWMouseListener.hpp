@@ -30,13 +30,16 @@ class GLFWMouseListener : public MouseListener
 
   private:
     GLFWwindow *glfwWindow_ = nullptr;
-    std::array<GLFWcursor *, CURSOR_SHAPE_COUNT> cursors_{};
+    std::array<GLFWcursor *, SYSTEM_CURSOR_COUNT> cursors_{};
+    //! The release of a press handed to the window manager goes to its grab too.
+    bool pressClaimed_ = false;
 
     void handleButtonEvent(i32 button, i32 action, i32 mods);
     void handlePositionEvent(f64 xpos, f64 ypos);
     void handleScrollEvent(f64 xoffset, f64 yoffset);
 
     i32 convertButton(i32 glfwButton) const;
+    [[nodiscard]] class GlfwWindowManager *owner() const noexcept;
     static GLFWMouseListener *getInstanceFromWindow(GLFWwindow *window);
 };
 

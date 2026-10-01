@@ -4,6 +4,7 @@
 #include "WaylandKeyboardListener.hpp"
 #include "WaylandMouseListener.hpp"
 #include "wma/WaylandSurfaceRole.hpp"
+#include "wma/backends/WindowHit.hpp"
 #include "wma/backends/wayland/protocols/xdg-decoration-unstable-v1-client-protocol.h"
 #include "wma/backends/wayland/protocols/xdg-shell-client-protocol.h"
 #include "wma/managers/IWindowManager.hpp"
@@ -55,8 +56,7 @@ class WaylandWindowManager : public IWindowManager
     bool restore() noexcept override;
     [[nodiscard]] bool isMaximized() const noexcept override;
     void close() noexcept override;
-    bool beginMove() noexcept override;
-    bool beginResize(ResizeEdge edge) noexcept override;
+    bool setHitTest(HitTest hitTest) override;
     bool setTitle(const char *title) noexcept override;
     [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     bool shouldClose() const override;
@@ -74,8 +74,13 @@ class WaylandWindowManager : public IWindowManager
     }
 
   private:
+    friend class WaylandMouseListener;
+
     std::unique_ptr<WaylandSurfaceRole> role_;
     void rebindListeners() noexcept;
+    //! Starts a compositor move or resize for a press the hit test assigns to the frame.
+    [[nodiscard]] bool claimPress(u32 serial, f64 x, f64 y);
+    [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
     //! pollEvents() and waitEvents() differ only by the poll timeout.
     void dispatch(int timeoutMs);
     wl_display *display_;
@@ -125,6 +130,8 @@ class WaylandWindowManager : public IWindowManager
     i32 floatingHeight_ = 0;
     DecorationMode decorationMode_ = DecorationMode::ClientSide;
     DecorationMode pendingDecorationMode_ = DecorationMode::ClientSide;
+    HitTest hitTest_;
+    detail::CaptionClicks captionClicks_;
 
     std::unique_ptr<WaylandKeyboardListener> keyboardListener_;
     std::unique_ptr<WaylandMouseListener> mouseListener_;

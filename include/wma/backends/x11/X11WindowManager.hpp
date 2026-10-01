@@ -7,6 +7,7 @@
 
 #include "X11KeyboardListener.hpp"
 #include "X11MouseListener.hpp"
+#include "wma/backends/WindowHit.hpp"
 #include "wma/managers/IWindowManager.hpp"
 
 namespace wma
@@ -29,6 +30,7 @@ class X11WindowManager : public IWindowManager
     bool restore() noexcept override;
     [[nodiscard]] bool isMaximized() const noexcept override;
     void close() noexcept override;
+    bool setHitTest(HitTest hitTest) override;
     bool setTitle(const char *title) noexcept override;
     [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     void pollEvents() override;
@@ -52,6 +54,12 @@ class X11WindowManager : public IWindowManager
     WmaCode destroy() override;
 
   private:
+    friend class X11MouseListener;
+
+    //! Hands a press the hit test assigns to the frame to the window manager.
+    [[nodiscard]] bool claimPress(const XButtonEvent &press);
+    [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
+
     Display *display_;
     Window window_;
     Colormap colormap_;
@@ -77,6 +85,8 @@ class X11WindowManager : public IWindowManager
     std::unique_ptr<X11KeyboardListener> keyboardListener_;
     std::unique_ptr<X11MouseListener> mouseListener_;
     bool windowShouldClose_;
+    HitTest hitTest_;
+    detail::CaptionClicks captionClicks_;
 
     void handleWindowEvent(const XEvent *event);
     void allocateSoftwareImage(i32 width, i32 height);

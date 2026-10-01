@@ -5,6 +5,7 @@
 
 #include "GLFWKeyboardListener.hpp"
 #include "GLFWMouseListener.hpp"
+#include "wma/backends/WindowHit.hpp"
 #include "wma/managers/IWindowManager.hpp"
 
 struct GLFWwindow;
@@ -39,6 +40,7 @@ class GlfwWindowManager : public IWindowManager
     bool restore() noexcept override;
     [[nodiscard]] bool isMaximized() const noexcept override;
     void close() noexcept override;
+    bool setHitTest(HitTest hitTest) override;
     bool setTitle(const char *title) noexcept override;
     [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     void pollEvents() override;
@@ -61,6 +63,12 @@ class GlfwWindowManager : public IWindowManager
     WmaCode destroy() override;
 
   private:
+    friend class GLFWMouseListener;
+
+    //! Hands a press the hit test assigns to the frame to the window manager.
+    [[nodiscard]] bool claimPress();
+    [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
+
     GLFWwindow *window_;
     //! CAMetalLayer* attached to the window's content view — Metal mode only.
     //! Owned by that view (and so by the window), not by this object.
@@ -74,6 +82,8 @@ class GlfwWindowManager : public IWindowManager
     bool windowShouldClose_;
     bool ownsInit_; //!< this instance holds a reference to glfwInit()
     bool maximized_ = false;
+    HitTest hitTest_;
+    detail::CaptionClicks captionClicks_;
 
     static void framebufferSizeCallback(GLFWwindow *window, int width, int height);
     static void windowFocusCallback(GLFWwindow *window, int focused);

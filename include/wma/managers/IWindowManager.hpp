@@ -64,13 +64,19 @@ class IWindowManager
     //! Signal shouldClose(); native resources remain valid until destroy().
     virtual void close() noexcept = 0;
 
-    //! Start from a pointer press handler (or while that press remains held).
-    //! Native grab credentials stay in the backend; unsupported paths return false.
-    virtual bool beginMove() noexcept
-    {
-        return false;
-    }
-    virtual bool beginResize(ResizeEdge /*edge*/) noexcept
+    /**
+     * @brief Lets client-side decorations move and resize the window natively.
+     *
+     * Asked on the event thread as the pointer moves and on every primary-button
+     * press, so it must be cheap and side-effect free. A Caption press moves the
+     * window and a Caption double-click toggles maximize; an edge press resizes
+     * and edges show a resize cursor. Those presses never reach the mouse
+     * listener -- the window manager takes the release -- so no input state is
+     * left half-pressed. Client presses are delivered as usual. Empty clears it.
+     *
+     * @return False when the backend cannot honour it; draw no title bar then.
+     */
+    virtual bool setHitTest(HitTest /*hitTest*/)
     {
         return false;
     }

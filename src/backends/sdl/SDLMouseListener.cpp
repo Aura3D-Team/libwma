@@ -10,19 +10,19 @@ namespace wma
 namespace
 {
 
-[[nodiscard]] SDL_SystemCursor toSystemCursor(CursorShape shape) noexcept
+[[nodiscard]] SDL_SystemCursor toSystemCursor(SystemCursor shape) noexcept
 {
     switch (shape)
     {
-    case CursorShape::NsResize:
+    case SystemCursor::NsResize:
         return SDL_SYSTEM_CURSOR_NS_RESIZE;
-    case CursorShape::EwResize:
+    case SystemCursor::EwResize:
         return SDL_SYSTEM_CURSOR_EW_RESIZE;
-    case CursorShape::NwseResize:
+    case SystemCursor::NwseResize:
         return SDL_SYSTEM_CURSOR_NWSE_RESIZE;
-    case CursorShape::NeswResize:
+    case SystemCursor::NeswResize:
         return SDL_SYSTEM_CURSOR_NESW_RESIZE;
-    case CursorShape::Default:
+    case SystemCursor::Default:
         break;
     }
     return SDL_SYSTEM_CURSOR_DEFAULT;
@@ -128,9 +128,10 @@ void SDLMouseListener::updateCursorState()
             SDL_ShowCursor();
             SDL_SetWindowRelativeMouseMode(sdlWindow_, false);
 
-            SDL_Cursor *&cursor = cursors_[static_cast<usize>(cursorShape_)];
-            if (!cursor && cursorShape_ != CursorShape::Default)
-                cursor = SDL_CreateSystemCursor(toSystemCursor(cursorShape_));
+            const SystemCursor shape = effectiveSystemCursor();
+            SDL_Cursor *&cursor = cursors_[static_cast<usize>(shape)];
+            if (!cursor && shape != SystemCursor::Default)
+                cursor = SDL_CreateSystemCursor(toSystemCursor(shape));
             //! Null where the platform has no system cursors, e.g. Android.
             SDL_SetCursor(cursor ? cursor : SDL_GetDefaultCursor());
         }

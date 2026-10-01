@@ -37,8 +37,11 @@ enum class WindowBackend : i32
     WAYLAND
 };
 
-enum class ResizeEdge
+//! What a point of a client-decorated window is to the window manager.
+enum class WindowHit : u8
 {
+    Client,
+    Caption,
     Top,
     Bottom,
     Left,
@@ -48,6 +51,9 @@ enum class ResizeEdge
     BottomLeft,
     BottomRight
 };
+
+//! Window-local logical coordinates in, region out. See IWindowManager::setHitTest().
+using HitTest = std::function<WindowHit(f64 x, f64 y)>;
 
 enum class DecorationMode
 {

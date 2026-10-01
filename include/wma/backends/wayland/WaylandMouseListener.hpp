@@ -26,6 +26,8 @@ namespace wma
  *     So "cursor hidden" is not state that can be set once at startup; it has
  *     to be re-asserted on every enter for as long as it should hold.
  */
+class WaylandWindowManager;
+
 class WaylandMouseListener : public MouseListener
 {
   public:
@@ -44,8 +46,7 @@ class WaylandMouseListener : public MouseListener
      * @param shm        Used to load the system cursor theme. Same caveat as
      *                   @p compositor.
      */
-    void initialize(wl_pointer *pointer, wl_compositor *compositor = nullptr, wl_shm *shm = nullptr,
-                    wl_seat *seat = nullptr);
+    void initialize(wl_pointer *pointer, wl_compositor *compositor = nullptr, wl_shm *shm = nullptr);
 
     void detach() noexcept;
 
@@ -70,14 +71,16 @@ class WaylandMouseListener : public MouseListener
   private:
     friend class WaylandWindowManager;
 
-    //! Only the backend can turn a live pointer grab into a native move/resize request.
-    bool consumePressSerial(wl_seat *seat, wl_surface *surface, u32 &serial) noexcept;
+    //! Re-reads the window manager's hit test under the pointer.
+    void updateHitCursor();
+
+    //! Claims title-bar and border presses before the application sees them.
+    WaylandWindowManager *owner_ = nullptr;
+    //! The release of a claimed press belongs to the compositor's grab too.
+    bool pressClaimed_ = false;
 
     wl_pointer *pointer_ = nullptr;
-    wl_seat *seat_ = nullptr;
     wl_surface *focusedSurface_ = nullptr;
-    u32 pressSerial_ = 0;
-    bool pressSerialValid_ = false;
     wl_surface *cursorSurface_ = nullptr;
 
     //! Non-owning; the theme owns the images it hands out. Null when @c shm_

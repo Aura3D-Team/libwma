@@ -108,13 +108,13 @@ mouse.setScrollAction(wma::MouseAction{[](const wma::WMAMouseScroll& s) {
 
 ```cpp
 const auto pos    = mouse.getCurrentPosition();
-const auto scroll = mouse.consumeScrollDelta();   // accumulated since last call
-mouse.setCursorEnabled(false);                    // FPS capture
-mouse.setCursorShape(wma::CursorShape::NwseResize); // CSS-named system image
+const auto scroll = mouse.consumeScrollDelta();       // accumulated since last call
+mouse.setCursorEnabled(false);                        // FPS capture
+mouse.setSystemCursor(wma::SystemCursor::NwseResize); // CSS-named system image
 mouse.setSensitivity(1.5);
 ```
 
-Most getters are `[[nodiscard]]`. A shape the platform cannot show falls back to
+Most getters are `[[nodiscard]]`. A cursor the platform cannot show falls back to
 the arrow: Emscripten's GLFW has none, and X11's core font has no diagonal
 double arrows, so it uses corner arrows.
 

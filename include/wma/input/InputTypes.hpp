@@ -16,7 +16,7 @@ constexpr InputContextId INPUT_CONTEXT_INVALID = UINT32_MAX;
 constexpr usize MOUSE_BUTTON_COUNT = 8;
 
 //! System pointer images, named after their CSS cursor equivalents.
-enum class CursorShape : u8
+enum class SystemCursor : u8
 {
     Default,
     NsResize,
@@ -25,7 +25,7 @@ enum class CursorShape : u8
     NeswResize
 };
 
-constexpr usize CURSOR_SHAPE_COUNT = 5;
+constexpr usize SYSTEM_CURSOR_COUNT = 5;
 
 } // namespace wma
 

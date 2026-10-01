@@ -66,6 +66,7 @@ WaylandWindowManager::WaylandWindowManager(const WindowDetails &windowDetails, G
       keyboardListener_(std::make_unique<WaylandKeyboardListener>(&windowFlags_)),
       mouseListener_(std::make_unique<WaylandMouseListener>())
 {
+    mouseListener_->owner_ = this;
 }
 
 WaylandWindowManager::~WaylandWindowManager()
@@ -96,6 +97,7 @@ WaylandWindowManager::WaylandWindowManager(WaylandWindowManager &&other) noexcep
       floatingWidth_(other.floatingWidth_), floatingHeight_(other.floatingHeight_),
       decorationMode_(std::exchange(other.decorationMode_, DecorationMode::ClientSide)),
       pendingDecorationMode_(std::exchange(other.pendingDecorationMode_, DecorationMode::ClientSide)),
+      hitTest_(std::move(other.hitTest_)), captionClicks_(other.captionClicks_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_))
 {
     rebindListeners();
@@ -145,6 +147,8 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         floatingHeight_ = other.floatingHeight_;
         decorationMode_ = std::exchange(other.decorationMode_, DecorationMode::ClientSide);
         pendingDecorationMode_ = std::exchange(other.pendingDecorationMode_, DecorationMode::ClientSide);
+        hitTest_ = std::move(other.hitTest_);
+        captionClicks_ = other.captionClicks_;
         keyboardListener_ = std::move(other.keyboardListener_);
         mouseListener_ = std::move(other.mouseListener_);
         rebindListeners();
@@ -158,6 +162,8 @@ void WaylandWindowManager::rebindListeners() noexcept
         role_->rebind(&windowDetails_, &windowFlags_);
     if (keyboardListener_)
         keyboardListener_->setWindowFlags(&windowFlags_);
+    if (mouseListener_)
+        mouseListener_->owner_ = this;
     const auto rebind = [this](auto *proxy)
     {
         if (proxy)
@@ -458,7 +464,7 @@ void WaylandWindowManager::setupInputDevices()
         //! roundtrip above guarantees has already run -- passing them here is
         //! what lets the listener restore the system cursor image after a
         //! hide, rather than only ever being able to hide it.
-        mouseListener_->initialize(pointer_, compositor_, shm_, seat_);
+        mouseListener_->initialize(pointer_, compositor_, shm_);
     }
 }
 
@@ -576,56 +582,67 @@ void WaylandWindowManager::close() noexcept
     windowShouldClose_ = true;
 }
 
-bool WaylandWindowManager::beginMove() noexcept
+bool WaylandWindowManager::setHitTest(HitTest hitTest)
 {
-    u32 serial = 0;
-    if (!xdgToplevel_ || !mouseListener_ || !mouseListener_->consumePressSerial(seat_, surface_, serial))
+    if (!xdgToplevel_)
         return false;
-    xdg_toplevel_move(xdgToplevel_, seat_, serial);
+    hitTest_ = std::move(hitTest);
+    if (mouseListener_)
+        mouseListener_->updateHitCursor();
     return true;
 }
 
-bool WaylandWindowManager::beginResize(ResizeEdge edge) noexcept
+bool WaylandWindowManager::claimPress(u32 serial, f64 x, f64 y)
 {
-    if (!xdgToplevel_ || !windowDetails_.resizable || !mouseListener_)
+    if (!hitTest_ || !xdgToplevel_ || !seat_)
         return false;
 
-    u32 nativeEdge;
-    switch (edge)
+    u32 edge = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
+    switch (hitTest_(x, y))
     {
-    case ResizeEdge::Top:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_TOP;
-        break;
-    case ResizeEdge::Bottom:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM;
-        break;
-    case ResizeEdge::Left:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
-        break;
-    case ResizeEdge::Right:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
-        break;
-    case ResizeEdge::TopLeft:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT;
-        break;
-    case ResizeEdge::TopRight:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT;
-        break;
-    case ResizeEdge::BottomLeft:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT;
-        break;
-    case ResizeEdge::BottomRight:
-        nativeEdge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT;
-        break;
-    default:
+    case WindowHit::Client:
         return false;
+    case WindowHit::Caption:
+        if (captionClicks_.press(x, y))
+            detail::toggleMaximized(*this);
+        else
+            xdg_toplevel_move(xdgToplevel_, seat_, serial);
+        return true;
+    case WindowHit::Top:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_TOP;
+        break;
+    case WindowHit::Bottom:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM;
+        break;
+    case WindowHit::Left:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
+        break;
+    case WindowHit::Right:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
+        break;
+    case WindowHit::TopLeft:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT;
+        break;
+    case WindowHit::TopRight:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT;
+        break;
+    case WindowHit::BottomLeft:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT;
+        break;
+    case WindowHit::BottomRight:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT;
+        break;
     }
 
-    u32 serial = 0;
-    if (!mouseListener_->consumePressSerial(seat_, surface_, serial))
+    if (!windowDetails_.resizable)
         return false;
-    xdg_toplevel_resize(xdgToplevel_, seat_, serial, nativeEdge);
+    xdg_toplevel_resize(xdgToplevel_, seat_, serial, edge);
     return true;
+}
+
+SystemCursor WaylandWindowManager::hoverCursor(f64 x, f64 y) const
+{
+    return hitTest_ && windowDetails_.resizable ? detail::cursorFor(hitTest_(x, y)) : SystemCursor::Default;
 }
 
 bool WaylandWindowManager::setTitle(const char *title) noexcept
@@ -851,7 +868,7 @@ void WaylandWindowManager::handleSeatCapabilities(void *data, wl_seat *seat, u32
         if (!manager->pointer_)
         {
             manager->pointer_ = wl_seat_get_pointer(seat);
-            manager->mouseListener_->initialize(manager->pointer_, manager->compositor_, manager->shm_, seat);
+            manager->mouseListener_->initialize(manager->pointer_, manager->compositor_, manager->shm_);
         }
     }
     else

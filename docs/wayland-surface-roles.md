@@ -11,6 +11,6 @@ The manager calls `attach()` before the first commit, waits for `configured()`, 
 
 Aura3D accepts an application window factory through `Engine(config, configPath, factory)`. This keeps layer-shell protocols and policy in a consumer such as libaurashell.
 
-Toplevel controls (`minimize`, `maximize`, `restore`, `setTitle`, `beginMove`,
-`beginResize`) return `false` for custom roles. `close()` signals the manager's
+Toplevel controls (`minimize`, `maximize`, `restore`, `setTitle`,
+`setHitTest`) return `false` for custom roles. `close()` signals the manager's
 `shouldClose()` without destroying the role or rendering surface.

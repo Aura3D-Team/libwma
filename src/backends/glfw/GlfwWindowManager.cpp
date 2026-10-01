@@ -1,4 +1,5 @@
 #include "wma/backends/glfw/GlfwWindowManager.hpp"
+#include "backends/glfw/GlfwNative.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
 #include <ink/Inkogger.h>
@@ -51,7 +52,8 @@ GlfwWindowManager::GlfwWindowManager(GlfwWindowManager &&other) noexcept
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
       userData_(std::move(other.userData_)), windowShouldClose_(other.windowShouldClose_),
-      ownsInit_(std::exchange(other.ownsInit_, false)), maximized_(std::exchange(other.maximized_, false))
+      ownsInit_(std::exchange(other.ownsInit_, false)), maximized_(std::exchange(other.maximized_, false)),
+      hitTest_(std::move(other.hitTest_)), captionClicks_(other.captionClicks_)
 {
     if (userData_)
     {
@@ -77,6 +79,8 @@ GlfwWindowManager &GlfwWindowManager::operator=(GlfwWindowManager &&other) noexc
         windowShouldClose_ = other.windowShouldClose_;
         ownsInit_ = std::exchange(other.ownsInit_, false);
         maximized_ = std::exchange(other.maximized_, false);
+        hitTest_ = std::move(other.hitTest_);
+        captionClicks_ = other.captionClicks_;
         if (userData_)
         {
             userData_->windowManager = this;
@@ -94,6 +98,10 @@ GlfwWindowManager &GlfwWindowManager::operator=(GlfwWindowManager &&other) noexc
 void GlfwWindowManager::createWindow(const char *windowName)
 {
     glfwWindowHint(GLFW_RESIZABLE, windowDetails_.resizable ? GLFW_TRUE : GLFW_FALSE);
+    //! Without a native move/resize the application's title bar could not drag
+    //! the window, so GLFW keeps its own frame there.
+    if (!glfw::supportsMoveResize())
+        windowDetails_.decorationMode = DecorationMode::ServerSide;
     glfwWindowHint(GLFW_DECORATED,
                    windowDetails_.decorationMode == DecorationMode::ClientSide ? GLFW_FALSE : GLFW_TRUE);
 
@@ -219,6 +227,38 @@ void GlfwWindowManager::close() noexcept
     windowShouldClose_ = true;
     if (window_)
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
+}
+
+bool GlfwWindowManager::setHitTest(HitTest hitTest)
+{
+    if (!window_ || !glfw::supportsMoveResize())
+        return false;
+    hitTest_ = std::move(hitTest);
+    return true;
+}
+
+bool GlfwWindowManager::claimPress()
+{
+    if (!hitTest_ || !window_)
+        return false;
+
+    f64 x = 0.0;
+    f64 y = 0.0;
+    glfwGetCursorPos(window_, &x, &y);
+    const WindowHit hit = hitTest_(x, y);
+    if (hit == WindowHit::Client || (hit != WindowHit::Caption && !windowDetails_.resizable))
+        return false;
+    if (hit == WindowHit::Caption && captionClicks_.press(x, y))
+    {
+        detail::toggleMaximized(*this);
+        return true;
+    }
+    return glfw::startMoveResize(window_, hit);
+}
+
+SystemCursor GlfwWindowManager::hoverCursor(f64 x, f64 y) const
+{
+    return hitTest_ && windowDetails_.resizable ? detail::cursorFor(hitTest_(x, y)) : SystemCursor::Default;
 }
 
 bool GlfwWindowManager::setTitle(const char *title) noexcept

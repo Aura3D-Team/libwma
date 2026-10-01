@@ -118,6 +118,9 @@ target_include_directories(wma
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+    # Helpers shared between backends; never installed.
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/src
 )
 
 # Which backends this build contains. PUBLIC compile definitions rather than a

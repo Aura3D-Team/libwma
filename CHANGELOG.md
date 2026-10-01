@@ -6,9 +6,10 @@ All notable changes to libwma are documented in this file.
 
 ### Added
 
-- Window controls through `IWindowManager`: minimize, maximize, restore, title, close request, and maximized-state query. Native Wayland move/resize uses the active pointer grab; other backends return `false` for these interactions.
+- Window controls through `IWindowManager`: minimize, maximize, restore, title, close request, and maximized-state query.
+- `IWindowManager::setHitTest()`: the application reports client, caption and border regions; every backend moves, resizes, shows resize cursors and maximizes on a caption double-click natively -- xdg-shell on Wayland, EWMH on X11 and GLFW-on-X11, `SDL_SetWindowHitTest` on SDL3. Frame presses never reach the mouse listener. GLFW off X11 keeps its own frame, since GLFW exposes no native move there.
 - `WindowDetails::decorationMode` and `getDecorationMode()` let applications own decoration rendering. Wayland negotiates with xdg-decoration and reports the compositor's choice.
-- `MouseListener::setCursorShape()` selects the default arrow or a resize cursor (`CursorShape`) on every backend.
+- `MouseListener::setSystemCursor()` selects the default arrow or a resize cursor (`SystemCursor`) on every backend.
 
 ### Changed
 

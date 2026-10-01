@@ -96,8 +96,8 @@ class MouseListener
     void setCursorEnabled(bool enabled);
     [[nodiscard]] bool isCursorEnabled() const;
     //! Applies while the cursor is enabled. A backend without the image shows Default.
-    void setCursorShape(CursorShape shape);
-    [[nodiscard]] CursorShape getCursorShape() const noexcept;
+    void setSystemCursor(SystemCursor shape);
+    [[nodiscard]] SystemCursor getSystemCursor() const noexcept;
     void setSensitivity(f64 sensitivity);
     [[nodiscard]] f64 getSensitivity() const;
 
@@ -105,6 +105,13 @@ class MouseListener
 
   protected:
     virtual void updateCursorState() = 0;
+
+    //! A resize border under the pointer (from the hit test) overrides setSystemCursor().
+    void setHitCursor(SystemCursor cursor);
+    [[nodiscard]] SystemCursor effectiveSystemCursor() const noexcept
+    {
+        return hitCursor_ != SystemCursor::Default ? hitCursor_ : systemCursor_;
+    }
 
     void dispatchButtonPress(i32 button);
     void dispatchButtonRelease(i32 button);
@@ -126,7 +133,8 @@ class MouseListener
     WMAMouseScroll accumulatedScroll_{};
 
     bool cursorEnabled_ = true;
-    CursorShape cursorShape_ = CursorShape::Default;
+    SystemCursor systemCursor_ = SystemCursor::Default;
+    SystemCursor hitCursor_ = SystemCursor::Default;
     f64 sensitivity_ = 1.0;
     bool firstMouse_ = true;
 };

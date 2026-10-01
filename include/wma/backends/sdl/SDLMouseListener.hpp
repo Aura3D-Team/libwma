@@ -28,7 +28,7 @@ class SDLMouseListener : public MouseListener
 
   private:
     SDL_Window *sdlWindow_ = nullptr;
-    std::array<SDL_Cursor *, CURSOR_SHAPE_COUNT> cursors_{};
+    std::array<SDL_Cursor *, SYSTEM_CURSOR_COUNT> cursors_{};
     i32 convertButton(i32 sdlButton) const;
 };
 

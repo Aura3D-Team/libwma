@@ -1,5 +1,6 @@
 #ifdef WMA_ENABLE_X11
 #include "wma/backends/x11/X11WindowManager.hpp"
+#include "backends/x11/X11MoveResize.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
 #include <array>
@@ -27,6 +28,7 @@ X11WindowManager::X11WindowManager(const WindowDetails &windowDetails, GraphicsA
       keyboardListener_(std::make_unique<X11KeyboardListener>()), mouseListener_(std::make_unique<X11MouseListener>()),
       windowShouldClose_(false)
 {
+    mouseListener_->owner_ = this;
 }
 
 X11WindowManager::~X11WindowManager()
@@ -43,8 +45,11 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
       glContext_(std::exchange(other.glContext_, nullptr)), fbConfig_(other.fbConfig_),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
-      windowShouldClose_(other.windowShouldClose_)
+      windowShouldClose_(other.windowShouldClose_), hitTest_(std::move(other.hitTest_)),
+      captionClicks_(other.captionClicks_)
 {
+    if (mouseListener_)
+        mouseListener_->owner_ = this;
 }
 
 X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
@@ -70,6 +75,10 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         keyboardListener_ = std::move(other.keyboardListener_);
         mouseListener_ = std::move(other.mouseListener_);
         windowShouldClose_ = other.windowShouldClose_;
+        hitTest_ = std::move(other.hitTest_);
+        captionClicks_ = other.captionClicks_;
+        if (mouseListener_)
+            mouseListener_->owner_ = this;
     }
     return *this;
 }
@@ -308,6 +317,37 @@ void X11WindowManager::refreshMaximized() noexcept
 void X11WindowManager::close() noexcept
 {
     windowShouldClose_ = true;
+}
+
+bool X11WindowManager::setHitTest(HitTest hitTest)
+{
+    if (!display_ || !window_)
+        return false;
+    hitTest_ = std::move(hitTest);
+    return true;
+}
+
+bool X11WindowManager::claimPress(const XButtonEvent &press)
+{
+    if (!hitTest_)
+        return false;
+
+    const f64 x = static_cast<f64>(press.x);
+    const f64 y = static_cast<f64>(press.y);
+    const WindowHit hit = hitTest_(x, y);
+    if (hit == WindowHit::Client || (hit != WindowHit::Caption && !windowDetails_.resizable))
+        return false;
+    if (hit == WindowHit::Caption && captionClicks_.press(x, y))
+    {
+        detail::toggleMaximized(*this);
+        return true;
+    }
+    return x11::startMoveResize(display_, window_, hit, press.x_root, press.y_root, press.button);
+}
+
+SystemCursor X11WindowManager::hoverCursor(f64 x, f64 y) const
+{
+    return hitTest_ && windowDetails_.resizable ? detail::cursorFor(hitTest_(x, y)) : SystemCursor::Default;
 }
 
 bool X11WindowManager::setTitle(const char *title) noexcept

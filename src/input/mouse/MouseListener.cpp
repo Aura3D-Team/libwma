@@ -155,18 +155,27 @@ bool MouseListener::isCursorEnabled() const
     return cursorEnabled_;
 }
 
-void MouseListener::setCursorShape(CursorShape shape)
+void MouseListener::setSystemCursor(SystemCursor shape)
 {
-    if (cursorShape_ != shape)
+    if (systemCursor_ != shape)
     {
-        cursorShape_ = shape;
+        systemCursor_ = shape;
         updateCursorState();
     }
 }
 
-CursorShape MouseListener::getCursorShape() const noexcept
+SystemCursor MouseListener::getSystemCursor() const noexcept
 {
-    return cursorShape_;
+    return systemCursor_;
+}
+
+void MouseListener::setHitCursor(SystemCursor cursor)
+{
+    if (hitCursor_ != cursor)
+    {
+        hitCursor_ = cursor;
+        updateCursorState();
+    }
 }
 
 void MouseListener::setSensitivity(f64 sensitivity)

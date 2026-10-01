@@ -436,6 +436,11 @@ class Compositor
     }
 };
 
+wma::WindowHit caption(f64, f64)
+{
+    return wma::WindowHit::Caption;
+}
+
 void sync(wma::IWindowManager &window)
 {
     auto *display = static_cast<wl_display *>(window.getNativeDisplayHandle());
@@ -449,8 +454,8 @@ void testControlsAndConfigure()
 {
     Compositor server;
     auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, {});
-    check(!window->minimize() && !window->maximize() && !window->restore() && !window->beginMove() &&
-              !window->beginResize(wma::ResizeEdge::Top) && !window->setTitle("before create"),
+    check(!window->minimize() && !window->maximize() && !window->restore() && !window->setHitTest(caption) &&
+              !window->setTitle("before create"),
           "controls reject calls before a native toplevel exists");
     window->createWindow("initial title");
     check(window->isToplevel(), "xdg_toplevel windows identify themselves as toplevels");
@@ -492,79 +497,87 @@ void testControlsAndConfigure()
     check(window->shouldClose(), "compositor close sets the existing shouldClose flag");
 }
 
-void testInteractiveGrabs()
+void testHitTest()
 {
     Compositor server;
     auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, {});
-    window->createWindow("grabs");
+    window->createWindow("hit test");
     sync(*window);
-    check(!window->beginMove() && !window->beginResize(wma::ResizeEdge::Top), "move and resize require a pointer grab");
-    server.enter(999);
-    sync(*window);
-    check(!window->beginMove(), "pointer-enter serial cannot start an interactive move");
 
-    bool movedInCallback = false;
+    wma::WindowHit region = wma::WindowHit::Client;
+    check(window->setHitTest(
+              [&region](f64, f64)
+              {
+                  return region;
+              }),
+          "toplevels accept a hit test");
+    int presses = 0;
+    int releases = 0;
     window->getMouseListener().addButtonAction(wma::MouseButton::WMALeft, wma::MouseAction(
-                                                                              [&]
+                                                                              [&presses]
                                                                               {
-                                                                                  movedInCallback = window->beginMove();
+                                                                                  ++presses;
+                                                                              },
+                                                                              [&releases]
+                                                                              {
+                                                                                  ++releases;
                                                                               }));
+    server.enter();
+    server.button(300, WL_POINTER_BUTTON_STATE_PRESSED);
+    server.button(301, WL_POINTER_BUTTON_STATE_RELEASED);
+    sync(*window);
+    check(presses == 1 && releases == 1 && server.requests().moves == 0, "client presses reach the application");
+
+    region = wma::WindowHit::Caption;
     server.button(321, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
     const auto move = server.requests();
-    check(movedInCallback && move.moves == 1 && move.serial == 321 && move.correctSeat,
-          "press callback moves through xdg_toplevel with the button serial and originating seat");
-    check(!window->beginMove(), "an interactive request consumes the press grab");
-    window->getMouseListener().clearAllActions();
+    check(move.moves == 1 && move.serial == 321 && move.correctSeat && presses == 1,
+          "a caption press moves through xdg_toplevel with its own serial and seat, unseen by the application");
+    server.button(322, WL_POINTER_BUTTON_STATE_RELEASED);
+    server.button(323, WL_POINTER_BUTTON_STATE_PRESSED);
+    server.button(324, WL_POINTER_BUTTON_STATE_RELEASED);
+    sync(*window);
+    check(server.requests().maximizes == 1 && server.requests().moves == 1 && presses == 1 && releases == 1,
+          "a caption double-click toggles maximize instead of moving, and its releases stay hidden");
 
     constexpr std::array edges = {
-        std::pair{wma::ResizeEdge::Top, XDG_TOPLEVEL_RESIZE_EDGE_TOP},
-        std::pair{wma::ResizeEdge::Bottom, XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM},
-        std::pair{wma::ResizeEdge::Left, XDG_TOPLEVEL_RESIZE_EDGE_LEFT},
-        std::pair{wma::ResizeEdge::Right, XDG_TOPLEVEL_RESIZE_EDGE_RIGHT},
-        std::pair{wma::ResizeEdge::TopLeft, XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT},
-        std::pair{wma::ResizeEdge::TopRight, XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT},
-        std::pair{wma::ResizeEdge::BottomLeft, XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT},
-        std::pair{wma::ResizeEdge::BottomRight, XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT},
+        std::pair{wma::WindowHit::Top, XDG_TOPLEVEL_RESIZE_EDGE_TOP},
+        std::pair{wma::WindowHit::Bottom, XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM},
+        std::pair{wma::WindowHit::Left, XDG_TOPLEVEL_RESIZE_EDGE_LEFT},
+        std::pair{wma::WindowHit::Right, XDG_TOPLEVEL_RESIZE_EDGE_RIGHT},
+        std::pair{wma::WindowHit::TopLeft, XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT},
+        std::pair{wma::WindowHit::TopRight, XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT},
+        std::pair{wma::WindowHit::BottomLeft, XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT},
+        std::pair{wma::WindowHit::BottomRight, XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT},
     };
     uint32_t serial = 400;
     bool edgesCorrect = true;
-    for (const auto [edge, nativeEdge] : edges)
+    for (const auto [hit, nativeEdge] : edges)
     {
-        server.button(serial, WL_POINTER_BUTTON_STATE_RELEASED);
+        region = hit;
         server.button(serial, WL_POINTER_BUTTON_STATE_PRESSED);
-        sync(*window);
-        edgesCorrect &= window->beginResize(edge);
+        server.button(serial + 1, WL_POINTER_BUTTON_STATE_RELEASED);
         sync(*window);
         const auto request = server.requests();
         edgesCorrect &=
             request.serial == serial && request.edge == static_cast<uint32_t>(nativeEdge) && request.correctSeat;
-        ++serial;
+        serial += 2;
     }
-    check(edgesCorrect && server.requests().resizes == 8, "all eight resize edges use the correct protocol values");
+    check(edgesCorrect && server.requests().resizes == 8 && presses == 1,
+          "all eight border regions resize with the correct protocol edge");
 
-    server.button(serial, WL_POINTER_BUTTON_STATE_RELEASED);
-    server.button(0, WL_POINTER_BUTTON_STATE_PRESSED);
-    sync(*window);
-    check(!window->beginResize(static_cast<wma::ResizeEdge>(255)) && window->beginMove(),
-          "invalid edge preserves a valid grab, including wrapped serial zero");
-    sync(*window);
-    check(server.requests().serial == 0, "serial zero is passed through unchanged");
-
-    server.button(499, WL_POINTER_BUTTON_STATE_RELEASED);
-    server.button(500, WL_POINTER_BUTTON_STATE_PRESSED);
-    server.button(501, WL_POINTER_BUTTON_STATE_RELEASED);
-    sync(*window);
-    check(!window->beginMove(), "button release invalidates the grab");
-    server.button(502, WL_POINTER_BUTTON_STATE_PRESSED);
+    region = wma::WindowHit::Caption;
     server.leave();
+    server.button(500, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
-    check(!window->beginResize(wma::ResizeEdge::Left), "pointer leave invalidates the grab");
+    check(server.requests().moves == 1, "presses outside the focused surface start nothing");
     server.enter();
-    server.button(503, WL_POINTER_BUTTON_STATE_PRESSED);
-    server.removePointer();
+    check(window->setHitTest({}), "the hit test can be cleared");
+    server.button(501, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
-    check(!window->beginMove(), "seat pointer capability removal invalidates the grab");
+    check(server.requests().moves == 1 && presses == 3, "without a hit test every press reaches the application");
+    window->getMouseListener().clearAllActions();
     window->close();
     check(window->shouldClose() && window->getWindowInstance(),
           "application close marks the window without destroying it");
@@ -617,8 +630,8 @@ void testCustomRole()
     auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, std::make_unique<CustomRole>());
     window->createWindow("custom surface role");
     check(!window->isToplevel(), "custom roles do not receive application title bars");
-    check(!window->minimize() && !window->maximize() && !window->restore() && !window->beginMove() &&
-              !window->beginResize(wma::ResizeEdge::Right) && !window->setTitle("custom") && !window->isMaximized(),
+    check(!window->minimize() && !window->maximize() && !window->restore() && !window->setHitTest(caption) &&
+              !window->setTitle("custom") && !window->isMaximized(),
           "custom surface roles safely reject xdg_toplevel-only controls");
     window->close();
     check(window->shouldClose(), "custom-role windows support application close");
@@ -633,14 +646,27 @@ void testFixedSizeWindow()
     auto window = wma::createWaylandWindowManager(details, wma::GraphicsAPI::Vulkan, {});
     window->createWindow("fixed size");
     sync(*window);
+    wma::WindowHit region = wma::WindowHit::BottomRight;
+    window->setHitTest(
+        [&region](f64, f64)
+        {
+            return region;
+        });
+    int presses = 0;
+    window->getMouseListener().addButtonAction(wma::MouseButton::WMALeft, wma::MouseAction(
+                                                                              [&presses]
+                                                                              {
+                                                                                  ++presses;
+                                                                              }));
     server.enter();
     server.button(600, WL_POINTER_BUTTON_STATE_PRESSED);
+    server.button(601, WL_POINTER_BUTTON_STATE_RELEASED);
     sync(*window);
-    check(!window->beginResize(wma::ResizeEdge::BottomRight) && window->beginMove(),
-          "fixed-size windows reject resize without consuming a valid move grab");
+    region = wma::WindowHit::Caption;
+    server.button(602, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
-    check(server.requests().resizes == 0 && server.requests().moves == 1,
-          "fixed-size resize rejection emits no native resize request");
+    check(server.requests().resizes == 0 && presses == 1 && server.requests().moves == 1,
+          "fixed-size windows pass border presses to the application but still move");
 }
 
 void testMovesAndSeatRemoval()
@@ -652,6 +678,7 @@ void testMovesAndSeatRemoval()
     check(server.requests().decorationMode == ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE,
           "default decoration preference requests server-side decorations");
 
+    check(window->setHitTest(caption), "a hit test is installed before moving the manager");
     for (const bool assign : {false, true})
     {
         server.configure(true, 0, 0, false);
@@ -675,18 +702,17 @@ void testMovesAndSeatRemoval()
     server.enter();
     server.button(700, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
-    check(window->beginMove(), "pointer input still supplies a valid grab after moving the manager");
+    check(server.requests().moves == 1 && server.requests().serial == 700,
+          "the hit test and pointer follow the moved manager");
     server.button(701, WL_POINTER_BUTTON_STATE_RELEASED);
-    server.button(702, WL_POINTER_BUTTON_STATE_PRESSED);
     server.removeSeat();
     sync(*window);
-    check(!window->beginMove(), "registry seat removal invalidates a pending grab");
     server.closeWindow();
     sync(*window);
     check(window->shouldClose(), "close events address the moved manager");
     window->destroy();
-    check(!window->beginMove() && !window->beginResize(wma::ResizeEdge::Top) && !window->maximize() &&
-              !window->restore() && !window->minimize() && !window->setTitle("destroyed") && !window->isMaximized(),
+    check(!window->setHitTest(caption) && !window->maximize() && !window->restore() && !window->minimize() &&
+              !window->setTitle("destroyed") && !window->isMaximized(),
           "controls safely reject calls after native resources are destroyed");
 }
 } // namespace
@@ -696,7 +722,7 @@ int main()
     try
     {
         testControlsAndConfigure();
-        testInteractiveGrabs();
+        testHitTest();
         testDecorationNegotiation();
         testCustomRole();
         testFixedSizeWindow();

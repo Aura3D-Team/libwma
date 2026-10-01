@@ -155,6 +155,20 @@ bool MouseListener::isCursorEnabled() const
     return cursorEnabled_;
 }
 
+void MouseListener::setCursorShape(CursorShape shape)
+{
+    if (cursorShape_ != shape)
+    {
+        cursorShape_ = shape;
+        updateCursorState();
+    }
+}
+
+CursorShape MouseListener::getCursorShape() const noexcept
+{
+    return cursorShape_;
+}
+
 void MouseListener::setSensitivity(f64 sensitivity)
 {
     sensitivity_ = sensitivity;

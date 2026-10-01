@@ -24,6 +24,13 @@ class X11WindowManager : public IWindowManager
     X11WindowManager &operator=(X11WindowManager &&) noexcept;
 
     void createWindow(const char *windowName) override;
+    bool minimize() noexcept override;
+    bool maximize() noexcept override;
+    bool restore() noexcept override;
+    [[nodiscard]] bool isMaximized() const noexcept override;
+    void close() noexcept override;
+    bool setTitle(const char *title) noexcept override;
+    [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     void pollEvents() override;
     void waitEvents(int timeoutMs) override;
     void swapBuffers() override;
@@ -50,6 +57,12 @@ class X11WindowManager : public IWindowManager
     Colormap colormap_;
     Atom wmDeleteWindow_;
 
+    //! Cached so per-frame queries never round-trip to the X server.
+    Atom netWmState_ = 0;
+    Atom netWmStateMaximizedVert_ = 0;
+    Atom netWmStateMaximizedHorz_ = 0;
+    bool maximized_ = false;
+
     //! Software rendering (GraphicsAPI::CPU)
     GC gc_;
     XImage *image_;
@@ -69,6 +82,8 @@ class X11WindowManager : public IWindowManager
     void allocateSoftwareImage(i32 width, i32 height);
     void destroySoftwareImage();
     void initGL();
+    bool requestMaximized(bool maximized) noexcept;
+    void refreshMaximized() noexcept;
 };
 
 } // namespace wma

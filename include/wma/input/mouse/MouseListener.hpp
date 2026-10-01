@@ -95,6 +95,9 @@ class MouseListener
     [[nodiscard]] WMAMouseScroll consumeScrollDelta() noexcept;
     void setCursorEnabled(bool enabled);
     [[nodiscard]] bool isCursorEnabled() const;
+    //! Applies while the cursor is enabled. A backend without the image shows Default.
+    void setCursorShape(CursorShape shape);
+    [[nodiscard]] CursorShape getCursorShape() const noexcept;
     void setSensitivity(f64 sensitivity);
     [[nodiscard]] f64 getSensitivity() const;
 
@@ -123,6 +126,7 @@ class MouseListener
     WMAMouseScroll accumulatedScroll_{};
 
     bool cursorEnabled_ = true;
+    CursorShape cursorShape_ = CursorShape::Default;
     f64 sensitivity_ = 1.0;
     bool firstMouse_ = true;
 };

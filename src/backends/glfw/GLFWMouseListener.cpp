@@ -8,6 +8,34 @@
 
 namespace wma
 {
+namespace
+{
+
+[[nodiscard]] int toStandardCursor(CursorShape shape) noexcept
+{
+    switch (shape)
+    {
+    case CursorShape::NsResize:
+        return GLFW_VRESIZE_CURSOR;
+    case CursorShape::EwResize:
+        return GLFW_HRESIZE_CURSOR;
+//! Diagonal shapes arrived in GLFW 3.4; Emscripten's port predates them.
+#ifdef GLFW_RESIZE_NWSE_CURSOR
+    case CursorShape::NwseResize:
+        return GLFW_RESIZE_NWSE_CURSOR;
+    case CursorShape::NeswResize:
+        return GLFW_RESIZE_NESW_CURSOR;
+#else
+    case CursorShape::NwseResize:
+    case CursorShape::NeswResize:
+#endif
+    case CursorShape::Default:
+        break;
+    }
+    return GLFW_ARROW_CURSOR;
+}
+
+} // namespace
 
 GLFWMouseListener::GLFWMouseListener() : MouseListener(), glfwWindow_(nullptr)
 {
@@ -105,12 +133,30 @@ GLFWMouseListener *GLFWMouseListener::getInstanceFromWindow(GLFWwindow *window)
     return static_cast<GLFWMouseListener *>(userData->mouseListener);
 }
 
+void GLFWMouseListener::releaseCursors() noexcept
+{
+    for (GLFWcursor *&cursor : cursors_)
+    {
+        if (cursor)
+            glfwDestroyCursor(cursor);
+        cursor = nullptr;
+    }
+}
+
 void GLFWMouseListener::updateCursorState()
 {
-    if (glfwWindow_)
-    {
-        glfwSetInputMode(glfwWindow_, GLFW_CURSOR, cursorEnabled_ ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-    }
+    if (!glfwWindow_)
+        return;
+
+    glfwSetInputMode(glfwWindow_, GLFW_CURSOR, cursorEnabled_ ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+    if (!cursorEnabled_)
+        return;
+
+    GLFWcursor *&cursor = cursors_[static_cast<usize>(cursorShape_)];
+    if (!cursor && cursorShape_ != CursorShape::Default)
+        cursor = glfwCreateStandardCursor(toStandardCursor(cursorShape_));
+    //! Null restores the arrow, and is also what Emscripten's GLFW returns.
+    glfwSetCursor(glfwWindow_, cursor);
 }
 
 i32 GLFWMouseListener::convertButton(i32 glfwButton) const

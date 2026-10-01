@@ -37,6 +37,24 @@ enum class WindowBackend : i32
     WAYLAND
 };
 
+enum class ResizeEdge
+{
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight
+};
+
+enum class DecorationMode
+{
+    ServerSide,
+    ClientSide
+};
+
 /**
  * @brief The platform API an IAudioDevice pushes samples through.
  *

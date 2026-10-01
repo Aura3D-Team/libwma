@@ -2,6 +2,23 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.5.0]
+
+### Added
+
+- Window controls through `IWindowManager`: minimize, maximize, restore, title, close request, and maximized-state query. Native Wayland move/resize uses the active pointer grab; other backends return `false` for these interactions.
+- `WindowDetails::decorationMode` and `getDecorationMode()` let applications own decoration rendering. Wayland negotiates with xdg-decoration and reports the compositor's choice.
+- `MouseListener::setCursorShape()` selects the default arrow or a resize cursor (`CursorShape`) on every backend.
+
+### Changed
+
+- Custom `IWindowManager` implementations must implement `close() noexcept` to signal `shouldClose()` without destroying native resources. Rebuild consumers against the new interface.
+- X11 and GLFW cache the maximized state from window-manager events, so `isMaximized()` costs no X server round trip per call.
+
+### Fixed
+
+- Wayland: a zero-size configure after maximize or fullscreen restores the last floating size instead of keeping the larger one.
+
 ## [0.4.0]
 
 ### Added

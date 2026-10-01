@@ -27,6 +27,13 @@ class SdlWindowManager : public IWindowManager
     SdlWindowManager &operator=(SdlWindowManager &&) noexcept;
 
     void createWindow(const char *windowName) override;
+    bool minimize() noexcept override;
+    bool maximize() noexcept override;
+    bool restore() noexcept override;
+    [[nodiscard]] bool isMaximized() const noexcept override;
+    void close() noexcept override;
+    bool setTitle(const char *title) noexcept override;
+    [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     void pollEvents() override;
     void waitEvents(int timeoutMs) override;
     void swapBuffers() override;

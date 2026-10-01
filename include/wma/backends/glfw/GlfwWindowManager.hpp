@@ -34,6 +34,13 @@ class GlfwWindowManager : public IWindowManager
     GlfwWindowManager &operator=(GlfwWindowManager &&) noexcept;
 
     void createWindow(const char *windowName) override;
+    bool minimize() noexcept override;
+    bool maximize() noexcept override;
+    bool restore() noexcept override;
+    [[nodiscard]] bool isMaximized() const noexcept override;
+    void close() noexcept override;
+    bool setTitle(const char *title) noexcept override;
+    [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     void pollEvents() override;
     void waitEvents(int timeoutMs) override;
     void swapBuffers() override;
@@ -66,10 +73,12 @@ class GlfwWindowManager : public IWindowManager
     std::unique_ptr<GlfwUserData> userData_;
     bool windowShouldClose_;
     bool ownsInit_; //!< this instance holds a reference to glfwInit()
+    bool maximized_ = false;
 
     static void framebufferSizeCallback(GLFWwindow *window, int width, int height);
     static void windowFocusCallback(GLFWwindow *window, int focused);
     static void windowIconifyCallback(GLFWwindow *window, int iconified);
+    static void windowMaximizeCallback(GLFWwindow *window, int maximized);
     void initializeGLFW();
     static GlfwWindowManager *getInstanceFromWindow(GLFWwindow *window);
 };

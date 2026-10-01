@@ -2,14 +2,17 @@
 #include "wma/backends/x11/X11WindowManager.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
+#include <array>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <poll.h>
 #include <utility>
 
 //! For XkbSetDetectableAutoRepeat; see createWindow().
 #include <X11/XKBlib.h>
+#include <X11/Xatom.h>
 
 #ifdef WMA_X11_HAS_GL
 #include <GL/glx.h>
@@ -34,6 +37,8 @@ X11WindowManager::~X11WindowManager()
 X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
     : display_(std::exchange(other.display_, nullptr)), window_(std::exchange(other.window_, 0)),
       colormap_(std::exchange(other.colormap_, 0)), wmDeleteWindow_(other.wmDeleteWindow_),
+      netWmState_(other.netWmState_), netWmStateMaximizedVert_(other.netWmStateMaximizedVert_),
+      netWmStateMaximizedHorz_(other.netWmStateMaximizedHorz_), maximized_(std::exchange(other.maximized_, false)),
       gc_(std::exchange(other.gc_, nullptr)), image_(std::exchange(other.image_, nullptr)),
       glContext_(std::exchange(other.glContext_, nullptr)), fbConfig_(other.fbConfig_),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
@@ -51,6 +56,10 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         window_ = std::exchange(other.window_, 0);
         colormap_ = std::exchange(other.colormap_, 0);
         wmDeleteWindow_ = other.wmDeleteWindow_;
+        netWmState_ = other.netWmState_;
+        netWmStateMaximizedVert_ = other.netWmStateMaximizedVert_;
+        netWmStateMaximizedHorz_ = other.netWmStateMaximizedHorz_;
+        maximized_ = std::exchange(other.maximized_, false);
         gc_ = std::exchange(other.gc_, nullptr);
         image_ = std::exchange(other.image_, nullptr);
         glContext_ = std::exchange(other.glContext_, nullptr);
@@ -149,9 +158,9 @@ void X11WindowManager::createWindow(const char *windowName)
     //! FocusChangeMask is what lets held keys be cleared on focus loss (see
     //! pollEvents): releases that happen while another window has focus are
     //! never delivered here, so a modifier held through an Alt-Tab would
-    //! otherwise stay down forever.
+    //! otherwise stay down forever. PropertyChangeMask tracks _NET_WM_STATE.
     windowAttributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask |
-                                  PointerMotionMask | StructureNotifyMask | FocusChangeMask;
+                                  PointerMotionMask | StructureNotifyMask | FocusChangeMask | PropertyChangeMask;
     unsigned long valueMask = CWEventMask;
     if (colormap_)
     {
@@ -171,7 +180,20 @@ void X11WindowManager::createWindow(const char *windowName)
         throw WindowException("Failed to create X11 window");
     }
 
-    XStoreName(display_, window_, windowName);
+    setTitle(windowName);
+
+    netWmState_ = XInternAtom(display_, "_NET_WM_STATE", False);
+    netWmStateMaximizedVert_ = XInternAtom(display_, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    netWmStateMaximizedHorz_ = XInternAtom(display_, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+
+    if (windowDetails_.decorationMode == DecorationMode::ClientSide)
+    {
+        //! Motif hints are the de facto WM convention for suppressing the frame.
+        const Atom motifHints = XInternAtom(display_, "_MOTIF_WM_HINTS", False);
+        const std::array<unsigned long, 5> hints{1UL << 1, 0, 0, 0, 0};
+        XChangeProperty(display_, window_, motifHints, motifHints, 32, PropModeReplace,
+                        reinterpret_cast<const unsigned char *>(hints.data()), static_cast<int>(hints.size()));
+    }
 
     wmDeleteWindow_ = XInternAtom(display_, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(display_, window_, &wmDeleteWindow_, 1);
@@ -205,6 +227,108 @@ void X11WindowManager::createWindow(const char *windowName)
         gc_ = XCreateGC(display_, window_, 0, nullptr);
         allocateSoftwareImage(windowDetails_.width, windowDetails_.height);
     }
+}
+
+bool X11WindowManager::minimize() noexcept
+{
+    if (!display_ || !window_)
+        return false;
+    const bool sent = XIconifyWindow(display_, window_, DefaultScreen(display_)) != 0;
+    XFlush(display_);
+    return sent;
+}
+
+bool X11WindowManager::requestMaximized(bool maximized) noexcept
+{
+    if (!display_ || !window_)
+        return false;
+
+    XEvent event{};
+    event.xclient.type = ClientMessage;
+    event.xclient.window = window_;
+    event.xclient.message_type = netWmState_;
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = maximized ? 1 : 0; // EWMH ADD / REMOVE
+    event.xclient.data.l[1] = static_cast<long>(netWmStateMaximizedVert_);
+    event.xclient.data.l[2] = static_cast<long>(netWmStateMaximizedHorz_);
+    event.xclient.data.l[3] = 1; // Application source, not a pager.
+    const bool sent = XSendEvent(display_, DefaultRootWindow(display_), False,
+                                 SubstructureRedirectMask | SubstructureNotifyMask, &event) != 0;
+    XFlush(display_);
+    return sent;
+}
+
+bool X11WindowManager::maximize() noexcept
+{
+    return requestMaximized(true);
+}
+
+bool X11WindowManager::restore() noexcept
+{
+    if (!display_ || !window_)
+        return false;
+    XMapWindow(display_, window_);
+    return requestMaximized(false);
+}
+
+bool X11WindowManager::isMaximized() const noexcept
+{
+    return maximized_;
+}
+
+void X11WindowManager::refreshMaximized() noexcept
+{
+    maximized_ = false;
+    if (!display_ || !window_)
+        return;
+
+    Atom actualType = None;
+    int actualFormat = 0;
+    unsigned long count = 0;
+    unsigned long remaining = 0;
+    unsigned char *property = nullptr;
+    const int result = XGetWindowProperty(display_, window_, netWmState_, 0, 1024, False, XA_ATOM, &actualType,
+                                          &actualFormat, &count, &remaining, &property);
+    std::unique_ptr<unsigned char, decltype(&XFree)> owner(property, &XFree);
+    if (result != Success || actualType != XA_ATOM || actualFormat != 32 || !property)
+        return;
+
+    //! Format-32 properties arrive as long-sized items, which is what Atom is.
+    const auto *atoms = reinterpret_cast<const Atom *>(property);
+    bool hasVertical = false;
+    bool hasHorizontal = false;
+    for (unsigned long index = 0; index < count; ++index)
+    {
+        hasVertical |= atoms[index] == netWmStateMaximizedVert_;
+        hasHorizontal |= atoms[index] == netWmStateMaximizedHorz_;
+    }
+    maximized_ = hasVertical && hasHorizontal;
+}
+
+void X11WindowManager::close() noexcept
+{
+    windowShouldClose_ = true;
+}
+
+bool X11WindowManager::setTitle(const char *title) noexcept
+{
+    if (!display_ || !window_ || !title)
+        return false;
+    const usize length = std::strlen(title);
+    if (length > static_cast<usize>(std::numeric_limits<int>::max()))
+        return false;
+
+    XStoreName(display_, window_, title);
+    XChangeProperty(display_, window_, XInternAtom(display_, "_NET_WM_NAME", False),
+                    XInternAtom(display_, "UTF8_STRING", False), 8, PropModeReplace,
+                    reinterpret_cast<const unsigned char *>(title), static_cast<int>(length));
+    XFlush(display_);
+    return true;
+}
+
+DecorationMode X11WindowManager::getDecorationMode() const noexcept
+{
+    return windowDetails_.decorationMode;
 }
 
 void X11WindowManager::initGL()
@@ -321,7 +445,7 @@ void X11WindowManager::pollEvents()
         case ClientMessage:
             if (static_cast<Atom>(event.xclient.data.l[0]) == wmDeleteWindow_)
             {
-                windowShouldClose_ = true;
+                close();
             }
             break;
         default:
@@ -351,6 +475,10 @@ void X11WindowManager::handleWindowEvent(const XEvent *event)
             if (graphicsAPI_ == GraphicsAPI::CPU && display_)
                 allocateSoftwareImage(xce.width, xce.height);
         }
+    }
+    else if (event->type == PropertyNotify && event->xproperty.atom == netWmState_)
+    {
+        refreshMaximized();
     }
 }
 
@@ -466,6 +594,7 @@ WmaCode X11WindowManager::destroy()
             XDestroyWindow(display_, window_);
             window_ = 0;
         }
+        maximized_ = false;
         if (colormap_)
         {
             XFreeColormap(display_, colormap_);

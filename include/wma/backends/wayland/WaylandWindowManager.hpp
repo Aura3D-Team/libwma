@@ -26,6 +26,10 @@ class WaylandWindowManager : public IWindowManager
     WaylandWindowManager &operator=(WaylandWindowManager &&) noexcept;
 
     void createWindow(const char *windowName) override;
+    [[nodiscard]] bool isToplevel() const noexcept override
+    {
+        return xdgToplevel_ != nullptr;
+    }
     bool transparentFramebuffer() const noexcept override
     {
         return role_ && role_->transparentFramebuffer();
@@ -46,6 +50,15 @@ class WaylandWindowManager : public IWindowManager
     void setTextInputEnabled(bool enabled) noexcept override;
     [[nodiscard]] bool isTextInputEnabled() const noexcept override;
     MouseListener &getMouseListener() noexcept override;
+    bool minimize() noexcept override;
+    bool maximize() noexcept override;
+    bool restore() noexcept override;
+    [[nodiscard]] bool isMaximized() const noexcept override;
+    void close() noexcept override;
+    bool beginMove() noexcept override;
+    bool beginResize(ResizeEdge edge) noexcept override;
+    bool setTitle(const char *title) noexcept override;
+    [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     bool shouldClose() const override;
     WindowBackend getBackendType() const override;
     GraphicsAPI getGraphicsAPI() const override;
@@ -70,14 +83,14 @@ class WaylandWindowManager : public IWindowManager
     wl_compositor *compositor_;
     wl_surface *surface_;
     wl_seat *seat_;
+    u32 seatGlobalName_ = 0;
     wl_shm *shm_;
 
     xdg_wm_base *xdgWmBase_;
     xdg_surface *xdgSurface_;
     xdg_toplevel *xdgToplevel_;
 
-    //! xdg-decoration: requests server-side decorations when the compositor
-    //! advertises the global; silently absent under GNOME/Mutter.
+    //! The compositor confirms the requested decoration mode asynchronously.
     zxdg_decoration_manager_v1 *xdgDecorationManager_;
     zxdg_toplevel_decoration_v1 *xdgToplevelDecoration_;
 
@@ -102,6 +115,16 @@ class WaylandWindowManager : public IWindowManager
     GraphicsAPI graphicsAPI_;
     bool windowShouldClose_;
     bool configured_;
+    bool maximized_ = false;
+    bool pendingMaximized_ = false;
+    bool pendingFloating_ = true;
+    i32 pendingWidth_ = 0;
+    i32 pendingHeight_ = 0;
+    //! Last size while neither maximized nor fullscreen; see handleXdgSurfaceConfigure.
+    i32 floatingWidth_ = 0;
+    i32 floatingHeight_ = 0;
+    DecorationMode decorationMode_ = DecorationMode::ClientSide;
+    DecorationMode pendingDecorationMode_ = DecorationMode::ClientSide;
 
     std::unique_ptr<WaylandKeyboardListener> keyboardListener_;
     std::unique_ptr<WaylandMouseListener> mouseListener_;
@@ -125,6 +148,9 @@ class WaylandWindowManager : public IWindowManager
                                            wl_array *states);
     static void handleXdgToplevelClose(void *data, xdg_toplevel *xdg_toplevel);
     static void handleXdgToplevelConfigureBounds(void *data, xdg_toplevel *xdg_toplevel, i32 width, i32 height);
+
+    static const zxdg_toplevel_decoration_v1_listener xdgToplevelDecorationListener_;
+    static void handleXdgToplevelDecorationConfigure(void *data, zxdg_toplevel_decoration_v1 *decoration, u32 mode);
 
     void setupInputDevices();
     void initEGL();

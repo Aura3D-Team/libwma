@@ -42,10 +42,82 @@ window->process([&] {
 });
 ```
 
-`process()` runs until `shouldClose()`. Call `window->destroy()` to break out.
+`process()` runs until `shouldClose()`. Call `window->close()` to request exit;
+destroy the native window after releasing its rendering resources.
 
 > On WASM `process()` drives `requestAnimationFrame` and never returns — put
 > shutdown work in the loop, not after it.
+
+## Application-drawn decorations
+
+```cpp
+#include <wma/wma.hpp>
+
+auto makeDecoratedWindow()
+{
+    wma::WindowDetails details{
+        .width = 1280, .height = 720,
+        .decorationMode = wma::DecorationMode::ClientSide,
+    };
+    auto window = wma::createWindowManager(
+        wma::WindowBackend::WAYLAND, details, wma::GraphicsAPI::Vulkan);
+    window->createWindow("Aura3D");
+    return window;
+}
+
+void toggleMaximized(wma::IWindowManager& window)
+{
+    if (window.isMaximized())
+        window.restore();
+    else
+        window.maximize();
+}
+
+void titleBarPressed(wma::IWindowManager& window)
+{
+    window.beginMove();
+}
+
+void resizeBorderPressed(wma::IWindowManager& window, wma::ResizeEdge edge)
+{
+    window.beginResize(edge);
+}
+```
+
+Aura3D can call these through `renderer.getWindowManager()`. Its UI owns hit
+testing, title text, buttons, borders and rendering; WMA owns native requests.
+
+| UI action | WMA call |
+|---|---|
+| Minimize button | `window.minimize()` |
+| Maximize/restore button | `toggleMaximized(window)` |
+| Close button | `window.close()` |
+| Application title changes | `window.setTitle("New title")` |
+| Decide whether to paint decorations | `window.isToplevel() && window.getDecorationMode() == wma::DecorationMode::ClientSide` |
+
+Call controls on the event thread after window creation. Boolean results mean
+a request was submitted; `false` means unsupported or invalid. Maximize state
+is reported by the platform, so continue pumping events after requests.
+
+| Backend | Controls, title, decoration preference | Interactive move/resize |
+|---|---|---|
+| Native Wayland | xdg-shell + optional xdg-decoration | Active pointer-button grab |
+| X11 | ICCCM/EWMH + Motif hints | `false` |
+| SDL3 / GLFW | Native library calls | `false` |
+
+Wayland uses the press serial and seat internally. Invoke move/resize from the
+UI's pointer-down handler, or while that press remains held; release, leave,
+device removal or a successful submission invalidates the grab. No global
+coordinates or native handles pass through the UI. Non-resizable windows reject
+resize requests. Native Wayland touch-driven move/resize is not implemented.
+After a successful move/resize request, release any UI pointer capture: the
+compositor may consume the button-release event.
+
+The Wayland compositor chooses the final decoration mode. Query
+`getDecorationMode()` after `createWindow()` and subsequent event dispatches;
+without xdg-decoration it is `ClientSide`. `restore()` unsets maximization;
+Wayland provides no request to undo minimization. Custom Wayland surface roles
+reject toplevel controls, but `close()` still signals the local event loop.
 
 ## Backends and graphics APIs
 

@@ -35,6 +35,56 @@ class IWindowManager
 
     virtual void createWindow(const char *windowName) = 0;
 
+    //! Panels and other custom surface roles must not receive a title bar.
+    [[nodiscard]] virtual bool isToplevel() const noexcept
+    {
+        return true;
+    }
+
+    //! Call on the event thread after creation. True means submitted, not
+    //! accepted by the window manager; false means unavailable or invalid.
+    virtual bool minimize() noexcept
+    {
+        return false;
+    }
+    virtual bool maximize() noexcept
+    {
+        return false;
+    }
+    //! Undo maximization. Wayland cannot programmatically undo minimization.
+    virtual bool restore() noexcept
+    {
+        return false;
+    }
+    [[nodiscard]] virtual bool isMaximized() const noexcept
+    {
+        return false;
+    }
+
+    //! Signal shouldClose(); native resources remain valid until destroy().
+    virtual void close() noexcept = 0;
+
+    //! Start from a pointer press handler (or while that press remains held).
+    //! Native grab credentials stay in the backend; unsupported paths return false.
+    virtual bool beginMove() noexcept
+    {
+        return false;
+    }
+    virtual bool beginResize(ResizeEdge /*edge*/) noexcept
+    {
+        return false;
+    }
+    virtual bool setTitle(const char * /*title*/) noexcept
+    {
+        return false;
+    }
+
+    //! WMA never draws decorations. The application paints them in ClientSide mode.
+    [[nodiscard]] virtual DecorationMode getDecorationMode() const noexcept
+    {
+        return DecorationMode::ServerSide;
+    }
+
     [[nodiscard]] virtual bool transparentFramebuffer() const noexcept
     {
         return false;

@@ -44,7 +44,8 @@ class WaylandMouseListener : public MouseListener
      * @param shm        Used to load the system cursor theme. Same caveat as
      *                   @p compositor.
      */
-    void initialize(wl_pointer *pointer, wl_compositor *compositor = nullptr, wl_shm *shm = nullptr);
+    void initialize(wl_pointer *pointer, wl_compositor *compositor = nullptr, wl_shm *shm = nullptr,
+                    wl_seat *seat = nullptr);
 
     void detach() noexcept;
 
@@ -67,7 +68,16 @@ class WaylandMouseListener : public MouseListener
     void updateCursorState() override;
 
   private:
+    friend class WaylandWindowManager;
+
+    //! Only the backend can turn a live pointer grab into a native move/resize request.
+    bool consumePressSerial(wl_seat *seat, wl_surface *surface, u32 &serial) noexcept;
+
     wl_pointer *pointer_ = nullptr;
+    wl_seat *seat_ = nullptr;
+    wl_surface *focusedSurface_ = nullptr;
+    u32 pressSerial_ = 0;
+    bool pressSerialValid_ = false;
     wl_surface *cursorSurface_ = nullptr;
 
     //! Non-owning; the theme owns the images it hands out. Null when @c shm_
@@ -76,8 +86,8 @@ class WaylandMouseListener : public MouseListener
     wl_cursor_theme *cursorTheme_ = nullptr;
 
     //! Serial of the most recent wl_pointer.enter -- the one wl_pointer.
-    //! set_cursor must be called with. 0 (never a valid serial) until the
-    //! first enter arrives.
+    //! set_cursor must be called with. focusedSurface_ tracks validity because
+    //! the serial counter can wrap through zero.
     u32 enterSerial_ = 0;
 
     /**

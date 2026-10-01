@@ -51,7 +51,7 @@ GlfwWindowManager::GlfwWindowManager(GlfwWindowManager &&other) noexcept
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
       userData_(std::move(other.userData_)), windowShouldClose_(other.windowShouldClose_),
-      ownsInit_(std::exchange(other.ownsInit_, false))
+      ownsInit_(std::exchange(other.ownsInit_, false)), maximized_(std::exchange(other.maximized_, false))
 {
     if (userData_)
     {
@@ -76,6 +76,7 @@ GlfwWindowManager &GlfwWindowManager::operator=(GlfwWindowManager &&other) noexc
         userData_ = std::move(other.userData_);
         windowShouldClose_ = other.windowShouldClose_;
         ownsInit_ = std::exchange(other.ownsInit_, false);
+        maximized_ = std::exchange(other.maximized_, false);
         if (userData_)
         {
             userData_->windowManager = this;
@@ -93,6 +94,8 @@ GlfwWindowManager &GlfwWindowManager::operator=(GlfwWindowManager &&other) noexc
 void GlfwWindowManager::createWindow(const char *windowName)
 {
     glfwWindowHint(GLFW_RESIZABLE, windowDetails_.resizable ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_DECORATED,
+                   windowDetails_.decorationMode == DecorationMode::ClientSide ? GLFW_FALSE : GLFW_TRUE);
 
     switch (graphicsAPI_)
     {
@@ -146,6 +149,9 @@ void GlfwWindowManager::createWindow(const char *windowName)
     glfwSetFramebufferSizeCallback(window_, framebufferSizeCallback);
     glfwSetWindowFocusCallback(window_, windowFocusCallback);
     glfwSetWindowIconifyCallback(window_, windowIconifyCallback);
+    //! GLFW's X11 attribute query is a server round trip; the callback is not.
+    glfwSetWindowMaximizeCallback(window_, windowMaximizeCallback);
+    maximized_ = glfwGetWindowAttrib(window_, GLFW_MAXIMIZED) == GLFW_TRUE;
 
     if (graphicsAPI_ == GraphicsAPI::OpenGL)
     {
@@ -177,6 +183,55 @@ void GlfwWindowManager::createWindow(const char *windowName)
     mouseListener_->initialize(window_);
 
     INK_LOG << "GLFW window created: " << windowName;
+}
+
+bool GlfwWindowManager::minimize() noexcept
+{
+    if (!window_)
+        return false;
+    glfwIconifyWindow(window_);
+    return true;
+}
+
+bool GlfwWindowManager::maximize() noexcept
+{
+    if (!window_)
+        return false;
+    glfwMaximizeWindow(window_);
+    return true;
+}
+
+bool GlfwWindowManager::restore() noexcept
+{
+    if (!window_)
+        return false;
+    glfwRestoreWindow(window_);
+    return true;
+}
+
+bool GlfwWindowManager::isMaximized() const noexcept
+{
+    return window_ && maximized_;
+}
+
+void GlfwWindowManager::close() noexcept
+{
+    windowShouldClose_ = true;
+    if (window_)
+        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+}
+
+bool GlfwWindowManager::setTitle(const char *title) noexcept
+{
+    if (!window_ || !title)
+        return false;
+    glfwSetWindowTitle(window_, title);
+    return true;
+}
+
+DecorationMode GlfwWindowManager::getDecorationMode() const noexcept
+{
+    return windowDetails_.decorationMode;
 }
 
 void GlfwWindowManager::pollEvents()
@@ -293,6 +348,9 @@ WmaCode GlfwWindowManager::destroy()
 {
     windowShouldClose_ = true;
 
+    if (mouseListener_)
+        mouseListener_->releaseCursors();
+
     //! Owned by the content view, which glfwDestroyWindow takes down; only
     //! the borrowed pointer is ours to drop, and it must go first so nothing
     //! can read it between the two.
@@ -303,6 +361,7 @@ WmaCode GlfwWindowManager::destroy()
         glfwDestroyWindow(window_);
         window_ = nullptr;
     }
+    maximized_ = false;
     if (ownsInit_)
     {
         ownsInit_ = false;
@@ -348,6 +407,13 @@ void GlfwWindowManager::windowIconifyCallback(GLFWwindow *window, int iconified)
     auto *instance = getInstanceFromWindow(window);
     if (instance)
         instance->windowFlags_.minimized = (iconified == GLFW_TRUE);
+}
+
+void GlfwWindowManager::windowMaximizeCallback(GLFWwindow *window, int maximized)
+{
+    auto *instance = getInstanceFromWindow(window);
+    if (instance)
+        instance->maximized_ = (maximized == GLFW_TRUE);
 }
 
 GlfwWindowManager *GlfwWindowManager::getInstanceFromWindow(GLFWwindow *window)

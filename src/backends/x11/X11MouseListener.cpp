@@ -2,8 +2,33 @@
 #include "wma/core/Types.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
+#include <X11/cursorfont.h>
+
 namespace wma
 {
+namespace
+{
+
+//! The core cursor font has no diagonal double arrows; corners read as diagonals.
+[[nodiscard]] unsigned int toFontShape(CursorShape shape) noexcept
+{
+    switch (shape)
+    {
+    case CursorShape::NsResize:
+        return XC_sb_v_double_arrow;
+    case CursorShape::EwResize:
+        return XC_sb_h_double_arrow;
+    case CursorShape::NwseResize:
+        return XC_bottom_right_corner;
+    case CursorShape::NeswResize:
+        return XC_bottom_left_corner;
+    case CursorShape::Default:
+        break;
+    }
+    return XC_left_ptr;
+}
+
+} // namespace
 
 X11MouseListener::X11MouseListener() : MouseListener(), display_(nullptr)
 {
@@ -90,9 +115,16 @@ void X11MouseListener::updateCursorState()
 {
     if (!display_ || !x11Window_)
         return;
-    if (cursorEnabled_)
+    if (cursorEnabled_ && cursorShape_ == CursorShape::Default)
     {
         XUndefineCursor(display_, x11Window_);
+    }
+    else if (cursorEnabled_)
+    {
+        Cursor &cursor = shapeCursors_[static_cast<usize>(cursorShape_)];
+        if (!cursor)
+            cursor = XCreateFontCursor(display_, toFontShape(cursorShape_));
+        XDefineCursor(display_, x11Window_, cursor);
     }
     else
     {

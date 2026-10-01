@@ -3,6 +3,7 @@
 
 #include "wma/input/mouse/MouseListener.hpp"
 #include <X11/Xlib.h>
+#include <array>
 
 namespace wma
 {
@@ -23,6 +24,8 @@ class X11MouseListener : public MouseListener
     Display *display_ = nullptr;
     Window x11Window_ = 0;
     Cursor invisibleCursor_;
+    //! Created on first use; freed with the display connection.
+    std::array<Cursor, CURSOR_SHAPE_COUNT> shapeCursors_{};
 
     Cursor createInvisibleCursor(Display *display, Window window);
     i32 convertButton(i32 x11Button) const;

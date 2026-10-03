@@ -97,7 +97,7 @@ WaylandWindowManager::WaylandWindowManager(WaylandWindowManager &&other) noexcep
       floatingWidth_(other.floatingWidth_), floatingHeight_(other.floatingHeight_),
       decorationMode_(std::exchange(other.decorationMode_, DecorationMode::ClientSide)),
       pendingDecorationMode_(std::exchange(other.pendingDecorationMode_, DecorationMode::ClientSide)),
-      hitTest_(std::move(other.hitTest_)), captionClicks_(other.captionClicks_),
+      hitTest_(std::move(other.hitTest_)), caption_(other.caption_), captionSerial_(other.captionSerial_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_))
 {
     rebindListeners();
@@ -148,7 +148,8 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         decorationMode_ = std::exchange(other.decorationMode_, DecorationMode::ClientSide);
         pendingDecorationMode_ = std::exchange(other.pendingDecorationMode_, DecorationMode::ClientSide);
         hitTest_ = std::move(other.hitTest_);
-        captionClicks_ = other.captionClicks_;
+        caption_ = other.caption_;
+        captionSerial_ = other.captionSerial_;
         keyboardListener_ = std::move(other.keyboardListener_);
         mouseListener_ = std::move(other.mouseListener_);
         rebindListeners();
@@ -603,10 +604,10 @@ bool WaylandWindowManager::claimPress(u32 serial, f64 x, f64 y)
     case WindowHit::Client:
         return false;
     case WindowHit::Caption:
-        if (captionClicks_.press(x, y))
+        if (caption_.press(x, y))
             detail::toggleMaximized(*this);
         else
-            xdg_toplevel_move(xdgToplevel_, seat_, serial);
+            captionSerial_ = serial;
         return true;
     case WindowHit::Top:
         edge = XDG_TOPLEVEL_RESIZE_EDGE_TOP;
@@ -638,6 +639,23 @@ bool WaylandWindowManager::claimPress(u32 serial, f64 x, f64 y)
         return false;
     xdg_toplevel_resize(xdgToplevel_, seat_, serial, edge);
     return true;
+}
+
+void WaylandWindowManager::dragTo(f64 x, f64 y)
+{
+    //! The press serial stays valid while the button is held.
+    if (caption_.moved(x, y) && xdgToplevel_ && seat_)
+        xdg_toplevel_move(xdgToplevel_, seat_, captionSerial_);
+}
+
+void WaylandWindowManager::releaseClaim() noexcept
+{
+    caption_.released();
+}
+
+void WaylandWindowManager::cancelClaim() noexcept
+{
+    caption_.cancel();
 }
 
 SystemCursor WaylandWindowManager::hoverCursor(f64 x, f64 y) const

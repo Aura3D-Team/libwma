@@ -79,7 +79,7 @@ WMA never draws decorations; it acts on the regions the application reports.
 | Region | Press | Hover |
 |---|---|---|
 | `Client` | Delivered to the mouse listener | Application cursor |
-| `Caption` | Native move; double-click toggles maximize | Application cursor |
+| `Caption` | Native move once the pointer travels 4 px; a click-click toggles maximize | Application cursor |
 | Edges and corners | Native resize (resizable windows) | Resize cursor |
 
 `Caption` and edge presses never reach the mouse listener, and neither do their

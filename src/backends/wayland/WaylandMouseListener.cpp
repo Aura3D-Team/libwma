@@ -146,6 +146,10 @@ void WaylandMouseListener::handleLeave(u32, wl_surface *)
     focusedSurface_ = nullptr;
     enterSerial_ = 0;
     hitCursor_ = SystemCursor::Default;
+    //! A compositor move takes the pointer, and with it the release.
+    pressClaimed_ = false;
+    if (owner_)
+        owner_->cancelClaim();
 }
 
 void WaylandMouseListener::handleMotion(u32, wl_fixed_t x, wl_fixed_t y)
@@ -164,6 +168,8 @@ void WaylandMouseListener::handleMotion(u32, wl_fixed_t x, wl_fixed_t y)
     currentPosition_ = WMAMousePosition(xpos, ypos, deltaX, deltaY);
     dispatchMove(currentPosition_);
     lastPosition_ = WMAMousePosition(xpos, ypos);
+    if (pressClaimed_ && owner_)
+        owner_->dragTo(xpos, ypos);
     updateHitCursor();
 }
 
@@ -178,18 +184,24 @@ void WaylandMouseListener::handleButton(u32 serial, u32, u32 button, u32 state)
     const i32 unifiedButton = convertButton(button);
     if (state == WL_POINTER_BUTTON_STATE_PRESSED)
     {
-        if (button == BTN_LEFT && focusedSurface_ && owner_ &&
-            owner_->claimPress(serial, currentPosition_.x, currentPosition_.y))
+        if (button == BTN_LEFT)
         {
-            pressClaimed_ = true;
-            return;
+            //! Assigned, not just set: a claim whose release the compositor took
+            //! must not swallow the release of the next, unclaimed press.
+            pressClaimed_ = focusedSurface_ && owner_ && owner_->claimPress(serial, currentPosition_.x, currentPosition_.y);
+            if (pressClaimed_)
+                return;
         }
         dispatchButtonPress(unifiedButton);
     }
     else if (state == WL_POINTER_BUTTON_STATE_RELEASED)
     {
         if (button == BTN_LEFT && std::exchange(pressClaimed_, false))
+        {
+            if (owner_)
+                owner_->releaseClaim();
             return;
+        }
         dispatchButtonRelease(unifiedButton);
     }
 }

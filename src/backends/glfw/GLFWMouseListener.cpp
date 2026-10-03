@@ -75,19 +75,27 @@ void GLFWMouseListener::handleButtonEvent(i32 button, i32 action, i32 mods)
     (void)mods;
     const i32 unifiedButton = convertButton(button);
     const bool primary = button == GLFW_MOUSE_BUTTON_LEFT;
+    GlfwWindowManager *manager = owner();
     if (action == GLFW_PRESS)
     {
-        if (primary && owner() && owner()->claimPress())
+        if (primary)
         {
-            pressClaimed_ = true;
-            return;
+            //! Assigned, not just set: a claim whose release the window manager
+            //! took must not swallow the release of the next, unclaimed press.
+            pressClaimed_ = manager && manager->claimPress();
+            if (pressClaimed_)
+                return;
         }
         dispatchButtonPress(unifiedButton);
     }
     else if (action == GLFW_RELEASE)
     {
         if (primary && std::exchange(pressClaimed_, false))
+        {
+            if (manager)
+                manager->releaseClaim();
             return;
+        }
         dispatchButtonRelease(unifiedButton);
     }
 }
@@ -110,7 +118,10 @@ void GLFWMouseListener::handlePositionEvent(f64 xpos, f64 ypos)
     currentPosition_ = WMAMousePosition(xpos, ypos, deltaX, deltaY);
     dispatchMove(currentPosition_);
     lastPosition_ = WMAMousePosition(xpos, ypos);
-    setHitCursor(owner() ? owner()->hoverCursor(xpos, ypos) : SystemCursor::Default);
+    GlfwWindowManager *manager = owner();
+    if (pressClaimed_ && manager)
+        manager->dragTo(xpos, ypos);
+    setHitCursor(manager ? manager->hoverCursor(xpos, ypos) : SystemCursor::Default);
 }
 
 void GLFWMouseListener::handleScrollEvent(f64 xoffset, f64 yoffset)

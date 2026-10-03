@@ -56,8 +56,11 @@ class X11WindowManager : public IWindowManager
   private:
     friend class X11MouseListener;
 
-    //! Hands a press the hit test assigns to the frame to the window manager.
+    //! Takes a press the hit test assigns to the frame: resizes at once, and holds a
+    //! title-bar press until dragTo() turns it into a move or the release into a click.
     [[nodiscard]] bool claimPress(const XButtonEvent &press);
+    void dragTo(const XMotionEvent &motion);
+    void releaseClaim() noexcept;
     [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
 
     Display *display_;
@@ -86,7 +89,8 @@ class X11WindowManager : public IWindowManager
     std::unique_ptr<X11MouseListener> mouseListener_;
     bool windowShouldClose_;
     HitTest hitTest_;
-    detail::CaptionClicks captionClicks_;
+    detail::CaptionGesture caption_;
+    unsigned int captionButton_ = 0;
 
     void handleWindowEvent(const XEvent *event);
     void allocateSoftwareImage(i32 width, i32 height);

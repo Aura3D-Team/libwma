@@ -277,9 +277,6 @@ void SdlWindowManager::pollEvents()
     }
 #endif
 
-    //! Title-bar presses SDL swallowed this pump arm a double-click before the
-    //! queued events are dispatched.
-    SDL_PumpEvents();
     if (frameHitTest_)
         frameHitTest_->pump();
 

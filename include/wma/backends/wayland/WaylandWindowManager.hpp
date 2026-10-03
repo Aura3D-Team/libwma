@@ -78,8 +78,12 @@ class WaylandWindowManager : public IWindowManager
 
     std::unique_ptr<WaylandSurfaceRole> role_;
     void rebindListeners() noexcept;
-    //! Starts a compositor move or resize for a press the hit test assigns to the frame.
+    //! Takes a press the hit test assigns to the frame: resizes at once, and holds a
+    //! title-bar press until dragTo() turns it into a move or the release into a click.
     [[nodiscard]] bool claimPress(u32 serial, f64 x, f64 y);
+    void dragTo(f64 x, f64 y);
+    void releaseClaim() noexcept;
+    void cancelClaim() noexcept;
     [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
     //! pollEvents() and waitEvents() differ only by the poll timeout.
     void dispatch(int timeoutMs);
@@ -131,7 +135,8 @@ class WaylandWindowManager : public IWindowManager
     DecorationMode decorationMode_ = DecorationMode::ClientSide;
     DecorationMode pendingDecorationMode_ = DecorationMode::ClientSide;
     HitTest hitTest_;
-    detail::CaptionClicks captionClicks_;
+    detail::CaptionGesture caption_;
+    u32 captionSerial_ = 0;
 
     std::unique_ptr<WaylandKeyboardListener> keyboardListener_;
     std::unique_ptr<WaylandMouseListener> mouseListener_;

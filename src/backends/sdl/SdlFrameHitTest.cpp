@@ -1,6 +1,7 @@
 #ifdef WMA_ENABLE_SDL
 #include "backends/sdl/SdlFrameHitTest.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <utility>
 #include <vector>
@@ -8,23 +9,42 @@
 #ifdef WMA_ENABLE_WAYLAND
 #include <linux/input-event-codes.h>
 #include <wayland-client.h>
+
+#include "wma/backends/wayland/protocols/xdg-shell-client-protocol.h"
 #endif
 
 namespace wma::sdl
 {
 
 #ifdef WMA_ENABLE_WAYLAND
-/// A second wl_pointer on SDL's connection, on a private queue so its listeners
-/// never run inside SDL's own dispatch. libdecor's plugins use the same technique.
-struct FrameHitTest::WaylandPresses
+/// A wl_pointer of our own on every seat of SDL's connection, for the press serial
+/// a compositor move needs and SDL does not expose. A private queue keeps these
+/// listeners out of SDL's dispatch; libdecor's plugins use the same technique.
+struct FrameHitTest::WaylandSeats
 {
-    struct Press
+    struct Seat
     {
-        f64 x;
-        f64 y;
+        Seat() = default;
+        Seat(const Seat &) = delete;
+        Seat &operator=(const Seat &) = delete;
+        ~Seat()
+        {
+            if (pointer)
+                wl_pointer_destroy(pointer);
+            if (seat)
+                wl_seat_destroy(seat);
+        }
+
+        WaylandSeats *owner = nullptr;
+        wl_seat *seat = nullptr;
+        u32 name = 0;
+        wl_pointer *pointer = nullptr;
+        wl_surface *focus = nullptr;
+        u32 pressSerial = 0;
+        bool pressed = false;
     };
 
-    WaylandPresses(wl_display *display, wl_surface *surface) : display(display), surface(surface)
+    WaylandSeats(wl_display *display, wl_surface *surface) : display(display), surface(surface)
     {
         queue = wl_display_create_queue(display);
         auto *wrapped = static_cast<wl_display *>(wl_proxy_create_wrapper(display));
@@ -32,105 +52,109 @@ struct FrameHitTest::WaylandPresses
         registry = wl_display_get_registry(wrapped);
         wl_proxy_wrapper_destroy(wrapped);
         wl_registry_add_listener(registry, &kRegistryListener, this);
-        //! The first roundtrip binds the seat, the second receives its capabilities.
+        //! The first roundtrip binds the seats, the second receives their capabilities.
         wl_display_roundtrip_queue(display, queue);
         wl_display_roundtrip_queue(display, queue);
     }
 
-    ~WaylandPresses()
+    ~WaylandSeats()
     {
-        dropSeat();
+        seats.clear();
         if (registry)
             wl_registry_destroy(registry);
         if (queue)
             wl_event_queue_destroy(queue);
     }
 
-    WaylandPresses(const WaylandPresses &) = delete;
-    WaylandPresses &operator=(const WaylandPresses &) = delete;
+    WaylandSeats(const WaylandSeats &) = delete;
+    WaylandSeats &operator=(const WaylandSeats &) = delete;
 
     //! SDL has already read these from the socket; this only dispatches them.
-    const std::vector<Press> &drain()
+    void pump()
     {
-        presses.clear();
         wl_display_dispatch_queue_pending(display, queue);
-        return presses;
     }
 
-    void dropSeat() noexcept
+    //! Moves @p toplevel with the seat whose primary button is held on the window.
+    bool startMove(xdg_toplevel *toplevel)
     {
-        if (pointer)
-            wl_pointer_destroy(pointer);
-        if (seat)
-            wl_seat_destroy(seat);
-        pointer = nullptr;
-        seat = nullptr;
-        seatName = 0;
-        focus = nullptr;
-    }
-
-    static WaylandPresses &self(void *data)
-    {
-        return *static_cast<WaylandPresses *>(data);
+        pump();
+        if (!toplevel || !latest || !latest->pressed || latest->focus != surface)
+            return false;
+        xdg_toplevel_move(toplevel, latest->seat, latest->pressSerial);
+        wl_display_flush(display);
+        return true;
     }
 
     static void global(void *data, wl_registry *registry, u32 name, const char *interface, u32)
     {
-        auto &presses = self(data);
-        if (presses.seat || std::strcmp(interface, wl_seat_interface.name) != 0)
+        if (std::strcmp(interface, wl_seat_interface.name) != 0)
             return;
-        presses.seat = static_cast<wl_seat *>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
-        presses.seatName = name;
-        wl_seat_add_listener(presses.seat, &kSeatListener, data);
+        auto &self = *static_cast<WaylandSeats *>(data);
+        auto seat = std::make_unique<Seat>();
+        seat->owner = &self;
+        seat->name = name;
+        seat->seat = static_cast<wl_seat *>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
+        wl_seat_add_listener(seat->seat, &kSeatListener, seat.get());
+        self.seats.push_back(std::move(seat));
     }
 
     static void globalRemove(void *data, wl_registry *, u32 name)
     {
-        if (self(data).seat && self(data).seatName == name)
-            self(data).dropSeat();
+        auto &self = *static_cast<WaylandSeats *>(data);
+        const auto removed = std::ranges::find(self.seats, name, &Seat::name);
+        if (removed == self.seats.end())
+            return;
+        if (self.latest == removed->get())
+            self.latest = nullptr;
+        self.seats.erase(removed);
     }
 
-    static void capabilities(void *data, wl_seat *seat, u32 capabilities)
+    static void capabilities(void *data, wl_seat *, u32 capabilities)
     {
-        auto &presses = self(data);
+        auto &seat = *static_cast<Seat *>(data);
         const bool hasPointer = (capabilities & WL_SEAT_CAPABILITY_POINTER) != 0;
-        if (hasPointer && !presses.pointer)
+        if (hasPointer && !seat.pointer)
         {
-            presses.pointer = wl_seat_get_pointer(seat);
-            wl_pointer_add_listener(presses.pointer, &kPointerListener, data);
+            seat.pointer = wl_seat_get_pointer(seat.seat);
+            wl_pointer_add_listener(seat.pointer, &kPointerListener, data);
         }
-        else if (!hasPointer && presses.pointer)
+        else if (!hasPointer && seat.pointer)
         {
-            wl_pointer_destroy(presses.pointer);
-            presses.pointer = nullptr;
-            presses.focus = nullptr;
+            wl_pointer_destroy(seat.pointer);
+            seat.pointer = nullptr;
+            seat.focus = nullptr;
+            seat.pressed = false;
         }
     }
 
-    static void enter(void *data, wl_pointer *, u32, wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
+    static void enter(void *data, wl_pointer *, u32, wl_surface *surface, wl_fixed_t, wl_fixed_t)
     {
-        auto &presses = self(data);
-        presses.focus = surface;
-        presses.x = wl_fixed_to_double(x);
-        presses.y = wl_fixed_to_double(y);
+        static_cast<Seat *>(data)->focus = surface;
     }
 
     static void leave(void *data, wl_pointer *, u32, wl_surface *)
     {
-        self(data).focus = nullptr;
+        auto &seat = *static_cast<Seat *>(data);
+        seat.focus = nullptr;
+        seat.pressed = false;
     }
 
-    static void motion(void *data, wl_pointer *, u32, wl_fixed_t x, wl_fixed_t y)
+    static void motion(void *, wl_pointer *, u32, wl_fixed_t, wl_fixed_t)
     {
-        self(data).x = wl_fixed_to_double(x);
-        self(data).y = wl_fixed_to_double(y);
     }
 
-    static void button(void *data, wl_pointer *, u32, u32, u32 button, u32 state)
+    static void button(void *data, wl_pointer *, u32 serial, u32, u32 button, u32 state)
     {
-        auto &presses = self(data);
-        if (button == BTN_LEFT && state == WL_POINTER_BUTTON_STATE_PRESSED && presses.focus == presses.surface)
-            presses.presses.push_back({presses.x, presses.y});
+        if (button != BTN_LEFT)
+            return;
+        auto &seat = *static_cast<Seat *>(data);
+        seat.pressed = state == WL_POINTER_BUTTON_STATE_PRESSED;
+        if (seat.pressed)
+        {
+            seat.pressSerial = serial;
+            seat.owner->latest = &seat;
+        }
     }
 
     static void axis(void *, wl_pointer *, u32, u32, wl_fixed_t)
@@ -145,27 +169,22 @@ struct FrameHitTest::WaylandPresses
     wl_surface *surface;
     wl_event_queue *queue = nullptr;
     wl_registry *registry = nullptr;
-    wl_seat *seat = nullptr;
-    u32 seatName = 0;
-    wl_pointer *pointer = nullptr;
-    wl_surface *focus = nullptr;
-    f64 x = 0.0;
-    f64 y = 0.0;
-    std::vector<Press> presses;
+    std::vector<std::unique_ptr<Seat>> seats;
+    Seat *latest = nullptr;
 };
 
-const wl_registry_listener FrameHitTest::WaylandPresses::kRegistryListener{.global = global,
-                                                                           .global_remove = globalRemove};
+const wl_registry_listener FrameHitTest::WaylandSeats::kRegistryListener{.global = global,
+                                                                         .global_remove = globalRemove};
 
 //! Bound at version 1, so the later events these leave null are never sent.
-const wl_seat_listener FrameHitTest::WaylandPresses::kSeatListener = []
+const wl_seat_listener FrameHitTest::WaylandSeats::kSeatListener = []
 {
     wl_seat_listener listener{};
     listener.capabilities = capabilities;
     return listener;
 }();
 
-const wl_pointer_listener FrameHitTest::WaylandPresses::kPointerListener = []
+const wl_pointer_listener FrameHitTest::WaylandSeats::kPointerListener = []
 {
     wl_pointer_listener listener{};
     listener.enter = enter;
@@ -176,7 +195,7 @@ const wl_pointer_listener FrameHitTest::WaylandPresses::kPointerListener = []
     return listener;
 }();
 #else
-struct FrameHitTest::WaylandPresses
+struct FrameHitTest::WaylandSeats
 {
 };
 #endif
@@ -195,7 +214,7 @@ FrameHitTest::FrameHitTest(SDL_Window *window, HitTest hitTest) : window_(window
         auto *surface =
             static_cast<wl_surface *>(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr));
         if (display && surface)
-            wayland_ = std::make_unique<WaylandPresses>(display, surface);
+            wayland_ = std::make_unique<WaylandSeats>(display, surface);
     }
 #endif
 }
@@ -210,18 +229,25 @@ void FrameHitTest::pump()
 {
 #ifdef WMA_ENABLE_WAYLAND
     if (wayland_)
-    {
-        for (const auto &press : wayland_->drain())
-            captionPressed(press.x, press.y);
-    }
+        wayland_->pump();
 #endif
 }
 
-void FrameHitTest::captionPressed(f64 x, f64 y)
+bool FrameHitTest::ownsWindow(SDL_WindowID id) const noexcept
 {
-    //! A press on an armed spot is the second click, delivered by SDL to consume().
-    if (hitTest_(x, y) == WindowHit::Caption && !clicks_.armedNear(x, y))
-        (void)clicks_.press(x, y);
+    return id == SDL_GetWindowID(window_);
+}
+
+void FrameHitTest::startMove()
+{
+#ifdef WMA_ENABLE_WAYLAND
+    if (wayland_)
+    {
+        auto *toplevel = static_cast<xdg_toplevel *>(SDL_GetPointerProperty(
+            SDL_GetWindowProperties(window_), SDL_PROP_WINDOW_WAYLAND_XDG_TOPLEVEL_POINTER, nullptr));
+        wayland_->startMove(toplevel);
+    }
+#endif
 }
 
 bool FrameHitTest::consume(const SDL_Event &event, IWindowManager &window)
@@ -230,30 +256,45 @@ bool FrameHitTest::consume(const SDL_Event &event, IWindowManager &window)
     {
     case SDL_EVENT_WINDOW_HIT_TEST:
     {
-        if (event.window.windowID != SDL_GetWindowID(window_))
+        if (!ownsWindow(event.window.windowID))
             return false;
-        //! X11 reports the press it handed to the window manager; the pointer
-        //! position it last reported is where that press happened.
+        //! SDL already handed this press to the window manager; the pointer
+        //! position it last reported is where the press happened.
         f32 x = 0.0f;
         f32 y = 0.0f;
         SDL_GetMouseState(&x, &y);
-        captionPressed(x, y);
+        if (hitTest_(x, y) == WindowHit::Caption)
+            caption_.clicked(x, y);
         return true;
     }
+    case SDL_EVENT_WINDOW_MOVED:
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+        //! A click leaves the window where it was; a press that moved it was a drag.
+        if (ownsWindow(event.window.windowID))
+            caption_.cancel();
+        return false;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     {
         const f64 x = event.button.x;
         const f64 y = event.button.y;
-        if (event.button.button != SDL_BUTTON_LEFT || event.button.windowID != SDL_GetWindowID(window_) ||
-            !clicks_.armedNear(x, y) || hitTest_(x, y) != WindowHit::Caption)
+        if (event.button.button != SDL_BUTTON_LEFT || !ownsWindow(event.button.windowID) ||
+            hitTest_(x, y) != WindowHit::Caption)
             return false;
-        (void)clicks_.press(x, y);
-        detail::toggleMaximized(window);
+        if (caption_.press(x, y))
+            detail::toggleMaximized(window);
         releasePending_ = true;
         return true;
     }
+    case SDL_EVENT_MOUSE_MOTION:
+        if (caption_.pending() && ownsWindow(event.motion.windowID) && caption_.moved(event.motion.x, event.motion.y))
+            startMove();
+        return false;
     case SDL_EVENT_MOUSE_BUTTON_UP:
-        return event.button.button == SDL_BUTTON_LEFT && std::exchange(releasePending_, false);
+        //! After a move this is the release SDL sends when the compositor takes the pointer.
+        if (event.button.button != SDL_BUTTON_LEFT || !std::exchange(releasePending_, false))
+            return false;
+        caption_.released();
+        return true;
     default:
         return false;
     }
@@ -268,8 +309,9 @@ SDL_HitTestResult SDLCALL FrameHitTest::thunk(SDL_Window *window, const SDL_Poin
     const WindowHit hit = self.hitTest_(x, y);
     if (hit == WindowHit::Caption)
     {
-        //! Let the second click of a double-click reach consume().
-        return self.clicks_.armedNear(x, y) ? SDL_HITTEST_NORMAL : SDL_HITTEST_DRAGGABLE;
+        //! On Wayland consume() moves the window itself. Elsewhere SDL moves on the
+        //! press, except the second click of a double-click, which consume() needs.
+        return self.wayland_ || self.caption_.armedNear(x, y) ? SDL_HITTEST_NORMAL : SDL_HITTEST_DRAGGABLE;
     }
     if ((SDL_GetWindowFlags(window) & SDL_WINDOW_RESIZABLE) == 0)
         return SDL_HITTEST_NORMAL;

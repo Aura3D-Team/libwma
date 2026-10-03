@@ -46,7 +46,7 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
       windowShouldClose_(other.windowShouldClose_), hitTest_(std::move(other.hitTest_)),
-      captionClicks_(other.captionClicks_)
+      caption_(other.caption_), captionButton_(other.captionButton_)
 {
     if (mouseListener_)
         mouseListener_->owner_ = this;
@@ -76,7 +76,8 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         mouseListener_ = std::move(other.mouseListener_);
         windowShouldClose_ = other.windowShouldClose_;
         hitTest_ = std::move(other.hitTest_);
-        captionClicks_ = other.captionClicks_;
+        caption_ = other.caption_;
+        captionButton_ = other.captionButton_;
         if (mouseListener_)
             mouseListener_->owner_ = this;
     }
@@ -337,12 +338,26 @@ bool X11WindowManager::claimPress(const XButtonEvent &press)
     const WindowHit hit = hitTest_(x, y);
     if (hit == WindowHit::Client || (hit != WindowHit::Caption && !windowDetails_.resizable))
         return false;
-    if (hit == WindowHit::Caption && captionClicks_.press(x, y))
+    if (hit == WindowHit::Caption)
     {
-        detail::toggleMaximized(*this);
+        if (caption_.press(x, y))
+            detail::toggleMaximized(*this);
+        else
+            captionButton_ = press.button;
         return true;
     }
     return x11::startMoveResize(display_, window_, hit, press.x_root, press.y_root, press.button);
+}
+
+void X11WindowManager::dragTo(const XMotionEvent &motion)
+{
+    if (caption_.moved(static_cast<f64>(motion.x), static_cast<f64>(motion.y)))
+        x11::startMoveResize(display_, window_, WindowHit::Caption, motion.x_root, motion.y_root, captionButton_);
+}
+
+void X11WindowManager::releaseClaim() noexcept
+{
+    caption_.released();
 }
 
 SystemCursor X11WindowManager::hoverCursor(f64 x, f64 y) const

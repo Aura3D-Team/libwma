@@ -71,10 +71,13 @@ void X11MouseListener::handleEvent(const XEvent *event)
             dispatchScroll(WMAMouseScroll(0.0, scrollY));
             break;
         }
-        if (btn == Button1 && owner_ && owner_->claimPress(event->xbutton))
+        if (btn == Button1)
         {
-            pressClaimed_ = true;
-            break;
+            //! Assigned, not just set: a claim whose release the window manager
+            //! took must not swallow the release of the next, unclaimed press.
+            pressClaimed_ = owner_ && owner_->claimPress(event->xbutton);
+            if (pressClaimed_)
+                break;
         }
         dispatchButtonPress(convertButton(btn));
         break;
@@ -82,8 +85,14 @@ void X11MouseListener::handleEvent(const XEvent *event)
     case ButtonRelease:
     {
         const int btn = static_cast<int>(event->xbutton.button);
-        if (btn >= Button4 || (btn == Button1 && std::exchange(pressClaimed_, false)))
+        if (btn >= Button4)
             break;
+        if (btn == Button1 && std::exchange(pressClaimed_, false))
+        {
+            if (owner_)
+                owner_->releaseClaim();
+            break;
+        }
         dispatchButtonRelease(convertButton(btn));
         break;
     }
@@ -101,6 +110,8 @@ void X11MouseListener::handleEvent(const XEvent *event)
         currentPosition_ = WMAMousePosition(xpos, ypos, deltaX, deltaY);
         dispatchMove(currentPosition_);
         lastPosition_ = WMAMousePosition(xpos, ypos);
+        if (pressClaimed_ && owner_)
+            owner_->dragTo(event->xmotion);
         setHitCursor(owner_ ? owner_->hoverCursor(xpos, ypos) : SystemCursor::Default);
         break;
     }

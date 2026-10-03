@@ -53,7 +53,7 @@ GlfwWindowManager::GlfwWindowManager(GlfwWindowManager &&other) noexcept
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
       userData_(std::move(other.userData_)), windowShouldClose_(other.windowShouldClose_),
       ownsInit_(std::exchange(other.ownsInit_, false)), maximized_(std::exchange(other.maximized_, false)),
-      hitTest_(std::move(other.hitTest_)), captionClicks_(other.captionClicks_)
+      hitTest_(std::move(other.hitTest_)), caption_(other.caption_)
 {
     if (userData_)
     {
@@ -80,7 +80,7 @@ GlfwWindowManager &GlfwWindowManager::operator=(GlfwWindowManager &&other) noexc
         ownsInit_ = std::exchange(other.ownsInit_, false);
         maximized_ = std::exchange(other.maximized_, false);
         hitTest_ = std::move(other.hitTest_);
-        captionClicks_ = other.captionClicks_;
+        caption_ = other.caption_;
         if (userData_)
         {
             userData_->windowManager = this;
@@ -248,12 +248,24 @@ bool GlfwWindowManager::claimPress()
     const WindowHit hit = hitTest_(x, y);
     if (hit == WindowHit::Client || (hit != WindowHit::Caption && !windowDetails_.resizable))
         return false;
-    if (hit == WindowHit::Caption && captionClicks_.press(x, y))
+    if (hit == WindowHit::Caption)
     {
-        detail::toggleMaximized(*this);
+        if (caption_.press(x, y))
+            detail::toggleMaximized(*this);
         return true;
     }
     return glfw::startMoveResize(window_, hit);
+}
+
+void GlfwWindowManager::dragTo(f64 x, f64 y)
+{
+    if (caption_.moved(x, y))
+        glfw::startMoveResize(window_, WindowHit::Caption);
+}
+
+void GlfwWindowManager::releaseClaim() noexcept
+{
+    caption_.released();
 }
 
 SystemCursor GlfwWindowManager::hoverCursor(f64 x, f64 y) const

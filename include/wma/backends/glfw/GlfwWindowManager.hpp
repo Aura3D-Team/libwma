@@ -65,8 +65,11 @@ class GlfwWindowManager : public IWindowManager
   private:
     friend class GLFWMouseListener;
 
-    //! Hands a press the hit test assigns to the frame to the window manager.
+    //! Takes a press the hit test assigns to the frame: resizes at once, and holds a
+    //! title-bar press until dragTo() turns it into a move or the release into a click.
     [[nodiscard]] bool claimPress();
+    void dragTo(f64 x, f64 y);
+    void releaseClaim() noexcept;
     [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
 
     GLFWwindow *window_;
@@ -83,7 +86,7 @@ class GlfwWindowManager : public IWindowManager
     bool ownsInit_; //!< this instance holds a reference to glfwInit()
     bool maximized_ = false;
     HitTest hitTest_;
-    detail::CaptionClicks captionClicks_;
+    detail::CaptionGesture caption_;
 
     static void framebufferSizeCallback(GLFWwindow *window, int width, int height);
     static void windowFocusCallback(GLFWwindow *window, int focused);

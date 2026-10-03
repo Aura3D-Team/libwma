@@ -151,6 +151,14 @@ class Compositor
                 wl_pointer_send_button(pointer_, serial, 0, BTN_LEFT, state);
             });
     }
+    void motion(int x, int y)
+    {
+        invoke(
+            [this, x, y]
+            {
+                wl_pointer_send_motion(pointer_, 0, wl_fixed_from_int(x), wl_fixed_from_int(y));
+            });
+    }
     void leave()
     {
         invoke(
@@ -531,15 +539,30 @@ void testHitTest()
     region = wma::WindowHit::Caption;
     server.button(321, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
+    check(server.requests().moves == 0 && presses == 1, "a caption press waits for the pointer to travel");
+    server.motion(30, 0);
+    sync(*window);
     const auto move = server.requests();
     check(move.moves == 1 && move.serial == 321 && move.correctSeat && presses == 1,
-          "a caption press moves through xdg_toplevel with its own serial and seat, unseen by the application");
-    server.button(322, WL_POINTER_BUTTON_STATE_RELEASED);
-    server.button(323, WL_POINTER_BUTTON_STATE_PRESSED);
-    server.button(324, WL_POINTER_BUTTON_STATE_RELEASED);
+          "travel turns the caption press into a move with its own serial and seat, unseen by the application");
+
+    //! The compositor kept the release; the pointer is back on the same spot of the moved window.
+    server.button(330, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
-    check(server.requests().maximizes == 1 && server.requests().moves == 1 && presses == 1 && releases == 1,
-          "a caption double-click toggles maximize instead of moving, and its releases stay hidden");
+    check(server.requests().maximizes == 0, "grabbing the bar again right after a drag does not maximize");
+    server.motion(50, 0);
+    sync(*window);
+    check(server.requests().moves == 2 && server.requests().serial == 330, "the second grab moves the window again");
+
+    server.leave();
+    server.enter();
+    server.button(340, WL_POINTER_BUTTON_STATE_PRESSED);
+    server.button(341, WL_POINTER_BUTTON_STATE_RELEASED);
+    server.button(342, WL_POINTER_BUTTON_STATE_PRESSED);
+    server.button(343, WL_POINTER_BUTTON_STATE_RELEASED);
+    sync(*window);
+    check(server.requests().maximizes == 1 && server.requests().moves == 2 && presses == 1 && releases == 1,
+          "a caption double-click toggles maximize, and its presses and releases stay hidden");
 
     constexpr std::array edges = {
         std::pair{wma::WindowHit::Top, XDG_TOPLEVEL_RESIZE_EDGE_TOP},
@@ -571,12 +594,12 @@ void testHitTest()
     server.leave();
     server.button(500, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
-    check(server.requests().moves == 1, "presses outside the focused surface start nothing");
+    check(server.requests().moves == 2, "presses outside the focused surface start nothing");
     server.enter();
     check(window->setHitTest({}), "the hit test can be cleared");
     server.button(501, WL_POINTER_BUTTON_STATE_PRESSED);
     sync(*window);
-    check(server.requests().moves == 1 && presses == 3, "without a hit test every press reaches the application");
+    check(server.requests().moves == 2 && presses == 3, "without a hit test every press reaches the application");
     window->getMouseListener().clearAllActions();
     window->close();
     check(window->shouldClose() && window->getWindowInstance(),
@@ -664,6 +687,7 @@ void testFixedSizeWindow()
     sync(*window);
     region = wma::WindowHit::Caption;
     server.button(602, WL_POINTER_BUTTON_STATE_PRESSED);
+    server.motion(30, 0);
     sync(*window);
     check(server.requests().resizes == 0 && presses == 1 && server.requests().moves == 1,
           "fixed-size windows pass border presses to the application but still move");
@@ -701,6 +725,7 @@ void testMovesAndSeatRemoval()
 
     server.enter();
     server.button(700, WL_POINTER_BUTTON_STATE_PRESSED);
+    server.motion(30, 0);
     sync(*window);
     check(server.requests().moves == 1 && server.requests().serial == 700,
           "the hit test and pointer follow the moved manager");

@@ -31,8 +31,14 @@ else()
     endif()
 endif()
 
-set(ink_DIR "${_WMA_SEARCH_PREFIX}/${_WMA_PLATFORM}/lib/cmake/ink")
+# A per-platform install is only a default: an explicit -Dink_DIR wins, and a
+# missing directory falls through to the normal package search.
+set(_WMA_INK_DIR "${_WMA_SEARCH_PREFIX}/${_WMA_PLATFORM}/lib/cmake/ink")
+if(NOT ink_DIR AND EXISTS "${_WMA_INK_DIR}")
+    set(ink_DIR "${_WMA_INK_DIR}" CACHE PATH "Directory containing inkConfig.cmake")
+endif()
 
+unset(_WMA_INK_DIR)
 unset(_WMA_SEARCH_PREFIX)
 unset(_WMA_PLATFORM)
 
@@ -108,6 +114,20 @@ endif()
 
 if(WMA_ENABLE_GLFW)
     find_package(glfw3 REQUIRED)
+endif()
+
+# Static SDL3 and static GLFW both compile in the Wayland protocol tables
+# (wp_fractional_scale_manager_v1_interface, ...), so an executable that pulls in
+# both fails to link with duplicate symbols. Nothing here can rename them.
+if(WMA_ENABLE_SDL AND WMA_ENABLE_GLFW AND NOT TARGET SDL3::SDL3-shared AND TARGET glfw)
+    get_target_property(_wma_glfw_type glfw TYPE)
+    if(_wma_glfw_type STREQUAL "STATIC_LIBRARY" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(WARNING
+            "[wma] SDL3 and GLFW are both static: executables using both backends fail to link "
+            "with duplicate wp_*_interface symbols. Install one of them shared, or build GLFW "
+            "with -DGLFW_BUILD_WAYLAND=OFF.")
+    endif()
+    unset(_wma_glfw_type)
 endif()
 
 # libasound ships a pkg-config file but no CMake config package, so this goes

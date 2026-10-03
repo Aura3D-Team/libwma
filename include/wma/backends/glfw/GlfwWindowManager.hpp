@@ -5,6 +5,7 @@
 
 #include "GLFWKeyboardListener.hpp"
 #include "GLFWMouseListener.hpp"
+#include "wma/backends/WindowHit.hpp"
 #include "wma/managers/IWindowManager.hpp"
 
 struct GLFWwindow;
@@ -34,6 +35,14 @@ class GlfwWindowManager : public IWindowManager
     GlfwWindowManager &operator=(GlfwWindowManager &&) noexcept;
 
     void createWindow(const char *windowName) override;
+    bool minimize() noexcept override;
+    bool maximize() noexcept override;
+    bool restore() noexcept override;
+    [[nodiscard]] bool isMaximized() const noexcept override;
+    void close() noexcept override;
+    bool setHitTest(HitTest hitTest) override;
+    bool setTitle(const char *title) noexcept override;
+    [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     void pollEvents() override;
     void waitEvents(int timeoutMs) override;
     void swapBuffers() override;
@@ -54,6 +63,15 @@ class GlfwWindowManager : public IWindowManager
     WmaCode destroy() override;
 
   private:
+    friend class GLFWMouseListener;
+
+    //! Takes a press the hit test assigns to the frame: resizes at once, and holds a
+    //! title-bar press until dragTo() turns it into a move or the release into a click.
+    [[nodiscard]] bool claimPress();
+    void dragTo(f64 x, f64 y);
+    void releaseClaim() noexcept;
+    [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
+
     GLFWwindow *window_;
     //! CAMetalLayer* attached to the window's content view — Metal mode only.
     //! Owned by that view (and so by the window), not by this object.
@@ -66,10 +84,14 @@ class GlfwWindowManager : public IWindowManager
     std::unique_ptr<GlfwUserData> userData_;
     bool windowShouldClose_;
     bool ownsInit_; //!< this instance holds a reference to glfwInit()
+    bool maximized_ = false;
+    HitTest hitTest_;
+    detail::CaptionGesture caption_;
 
     static void framebufferSizeCallback(GLFWwindow *window, int width, int height);
     static void windowFocusCallback(GLFWwindow *window, int focused);
     static void windowIconifyCallback(GLFWwindow *window, int iconified);
+    static void windowMaximizeCallback(GLFWwindow *window, int maximized);
     void initializeGLFW();
     static GlfwWindowManager *getInstanceFromWindow(GLFWwindow *window);
 };

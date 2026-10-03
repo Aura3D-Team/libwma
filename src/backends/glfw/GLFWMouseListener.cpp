@@ -5,9 +5,38 @@
 #include "wma/exceptions/WMAException.hpp"
 
 #include <GLFW/glfw3.h>
+#include <utility>
 
 namespace wma
 {
+namespace
+{
+
+[[nodiscard]] int toStandardCursor(SystemCursor shape) noexcept
+{
+    switch (shape)
+    {
+    case SystemCursor::NsResize:
+        return GLFW_VRESIZE_CURSOR;
+    case SystemCursor::EwResize:
+        return GLFW_HRESIZE_CURSOR;
+//! Diagonal shapes arrived in GLFW 3.4; Emscripten's port predates them.
+#ifdef GLFW_RESIZE_NWSE_CURSOR
+    case SystemCursor::NwseResize:
+        return GLFW_RESIZE_NWSE_CURSOR;
+    case SystemCursor::NeswResize:
+        return GLFW_RESIZE_NESW_CURSOR;
+#else
+    case SystemCursor::NwseResize:
+    case SystemCursor::NeswResize:
+#endif
+    case SystemCursor::Default:
+        break;
+    }
+    return GLFW_ARROW_CURSOR;
+}
+
+} // namespace
 
 GLFWMouseListener::GLFWMouseListener() : MouseListener(), glfwWindow_(nullptr)
 {
@@ -45,14 +74,36 @@ void GLFWMouseListener::handleButtonEvent(i32 button, i32 action, i32 mods)
 {
     (void)mods;
     const i32 unifiedButton = convertButton(button);
+    const bool primary = button == GLFW_MOUSE_BUTTON_LEFT;
+    GlfwWindowManager *manager = owner();
     if (action == GLFW_PRESS)
     {
+        if (primary)
+        {
+            //! Assigned, not just set: a claim whose release the window manager
+            //! took must not swallow the release of the next, unclaimed press.
+            pressClaimed_ = manager && manager->claimPress();
+            if (pressClaimed_)
+                return;
+        }
         dispatchButtonPress(unifiedButton);
     }
     else if (action == GLFW_RELEASE)
     {
+        if (primary && std::exchange(pressClaimed_, false))
+        {
+            if (manager)
+                manager->releaseClaim();
+            return;
+        }
         dispatchButtonRelease(unifiedButton);
     }
+}
+
+GlfwWindowManager *GLFWMouseListener::owner() const noexcept
+{
+    const auto *userData = glfwWindow_ ? static_cast<GlfwUserData *>(glfwGetWindowUserPointer(glfwWindow_)) : nullptr;
+    return userData ? userData->windowManager : nullptr;
 }
 
 void GLFWMouseListener::handlePositionEvent(f64 xpos, f64 ypos)
@@ -67,6 +118,10 @@ void GLFWMouseListener::handlePositionEvent(f64 xpos, f64 ypos)
     currentPosition_ = WMAMousePosition(xpos, ypos, deltaX, deltaY);
     dispatchMove(currentPosition_);
     lastPosition_ = WMAMousePosition(xpos, ypos);
+    GlfwWindowManager *manager = owner();
+    if (pressClaimed_ && manager)
+        manager->dragTo(xpos, ypos);
+    setHitCursor(manager ? manager->hoverCursor(xpos, ypos) : SystemCursor::Default);
 }
 
 void GLFWMouseListener::handleScrollEvent(f64 xoffset, f64 yoffset)
@@ -105,12 +160,31 @@ GLFWMouseListener *GLFWMouseListener::getInstanceFromWindow(GLFWwindow *window)
     return static_cast<GLFWMouseListener *>(userData->mouseListener);
 }
 
+void GLFWMouseListener::releaseCursors() noexcept
+{
+    for (GLFWcursor *&cursor : cursors_)
+    {
+        if (cursor)
+            glfwDestroyCursor(cursor);
+        cursor = nullptr;
+    }
+}
+
 void GLFWMouseListener::updateCursorState()
 {
-    if (glfwWindow_)
-    {
-        glfwSetInputMode(glfwWindow_, GLFW_CURSOR, cursorEnabled_ ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-    }
+    if (!glfwWindow_)
+        return;
+
+    glfwSetInputMode(glfwWindow_, GLFW_CURSOR, cursorEnabled_ ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+    if (!cursorEnabled_)
+        return;
+
+    const SystemCursor shape = effectiveSystemCursor();
+    GLFWcursor *&cursor = cursors_[static_cast<usize>(shape)];
+    if (!cursor && shape != SystemCursor::Default)
+        cursor = glfwCreateStandardCursor(toStandardCursor(shape));
+    //! Null restores the arrow, and is also what Emscripten's GLFW returns.
+    glfwSetCursor(glfwWindow_, cursor);
 }
 
 i32 GLFWMouseListener::convertButton(i32 glfwButton) const

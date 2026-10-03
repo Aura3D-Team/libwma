@@ -155,6 +155,29 @@ bool MouseListener::isCursorEnabled() const
     return cursorEnabled_;
 }
 
+void MouseListener::setSystemCursor(SystemCursor shape)
+{
+    if (systemCursor_ != shape)
+    {
+        systemCursor_ = shape;
+        updateCursorState();
+    }
+}
+
+SystemCursor MouseListener::getSystemCursor() const noexcept
+{
+    return systemCursor_;
+}
+
+void MouseListener::setHitCursor(SystemCursor cursor)
+{
+    if (hitCursor_ != cursor)
+    {
+        hitCursor_ = cursor;
+        updateCursorState();
+    }
+}
+
 void MouseListener::setSensitivity(f64 sensitivity)
 {
     sensitivity_ = sensitivity;

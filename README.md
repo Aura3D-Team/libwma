@@ -118,7 +118,7 @@ example (`WMA_BUILD_EXAMPLES=ON`) with every backend enabled except that
 `cmake --preset linux-release && cmake --build --preset linux-release`.
 On Windows, `windows-debug`/`windows-release` configure the same project with
 an MSVC-aware toolchain from a Developer Command Prompt (or any shell with
-`vcvarsall`/VS Build Tools on `PATH`) — `src/CMakeLists.txt` selects `/W4` +
+`vcvarsall`/VS Build Tools on `PATH`) — `CMakeLists.txt` selects `/W4` +
 `/Od`/`/O2` automatically instead of the GCC/Clang `-Wall`/`-O3` flags.
 
 > Building the example with **both** `WMA_ENABLE_SDL=ON` and

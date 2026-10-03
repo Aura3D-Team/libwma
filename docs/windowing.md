@@ -42,10 +42,75 @@ window->process([&] {
 });
 ```
 
-`process()` runs until `shouldClose()`. Call `window->destroy()` to break out.
+`process()` runs until `shouldClose()`. Call `window->close()` to request exit;
+destroy the native window after releasing its rendering resources.
 
 > On WASM `process()` drives `requestAnimationFrame` and never returns — put
 > shutdown work in the loop, not after it.
+
+## Application-drawn decorations
+
+```cpp
+#include <wma/wma.hpp>
+
+auto makeDecoratedWindow()
+{
+    wma::WindowDetails details{
+        .width = 1280, .height = 720,
+        .decorationMode = wma::DecorationMode::ClientSide,
+    };
+    auto window = wma::createWindowManager(
+        wma::WindowBackend::SDL3, details, wma::GraphicsAPI::Vulkan);
+    window->createWindow("Aura3D");
+
+    // Window-local logical coordinates; cheap and side-effect free.
+    const bool native = window->setHitTest([](f64 x, f64 y) {
+        if (y < 4) return wma::WindowHit::Top;
+        if (y < 34 && x < 1100) return wma::WindowHit::Caption;
+        return wma::WindowHit::Client;
+    });
+    (void)native; // false: draw no title bar, nothing could move the window
+    return window;
+}
+```
+
+WMA never draws decorations; it acts on the regions the application reports.
+
+| Region | Press | Hover |
+|---|---|---|
+| `Client` | Delivered to the mouse listener | Application cursor |
+| `Caption` | Native move once the pointer travels 4 px; a click-click toggles maximize | Application cursor |
+| Edges and corners | Native resize (resizable windows) | Resize cursor |
+
+`Caption` and edge presses never reach the mouse listener, and neither do their
+releases: the window manager takes the grab, so no input state is left
+half-pressed. Buttons drawn in the title bar must report `Client`.
+
+| Backend | Move/resize | Notes |
+|---|---|---|
+| Native Wayland | `xdg_toplevel.move/resize` with the press serial | |
+| Native X11 | EWMH `_NET_WM_MOVERESIZE` | Motif hints remove the frame |
+| SDL3 | `SDL_SetWindowHitTest` | `false` in the browser and on Android |
+| GLFW on X11 | EWMH through GLFW's native handles | |
+| GLFW elsewhere | `false` | `ClientSide` falls back to GLFW's own frame |
+
+| UI action | WMA call |
+|---|---|
+| Minimize button | `window.minimize()` |
+| Maximize/restore button | `window.isMaximized() ? window.restore() : window.maximize()` |
+| Close button | `window.close()` |
+| Application title changes | `window.setTitle("New title")` |
+| Decide whether to paint decorations | `isToplevel()`, `getDecorationMode() == ClientSide` and `setHitTest()` succeeded |
+
+Call controls on the event thread after window creation. Boolean results mean
+a request was submitted; `false` means unsupported or invalid. Maximize state
+is reported by the platform, so continue pumping events after requests.
+
+The Wayland compositor chooses the final decoration mode. Query
+`getDecorationMode()` after `createWindow()` and subsequent event dispatches;
+without xdg-decoration it is `ClientSide`. `restore()` unsets maximization;
+Wayland provides no request to undo minimization. Custom Wayland surface roles
+reject toplevel controls, but `close()` still signals the local event loop.
 
 ## Backends and graphics APIs
 

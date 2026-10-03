@@ -26,6 +26,8 @@ namespace wma
  *     So "cursor hidden" is not state that can be set once at startup; it has
  *     to be re-asserted on every enter for as long as it should hold.
  */
+class WaylandWindowManager;
+
 class WaylandMouseListener : public MouseListener
 {
   public:
@@ -67,7 +69,18 @@ class WaylandMouseListener : public MouseListener
     void updateCursorState() override;
 
   private:
+    friend class WaylandWindowManager;
+
+    //! Re-reads the window manager's hit test under the pointer.
+    void updateHitCursor();
+
+    //! Claims title-bar and border presses before the application sees them.
+    WaylandWindowManager *owner_ = nullptr;
+    //! The release of a claimed press belongs to the compositor's grab too.
+    bool pressClaimed_ = false;
+
     wl_pointer *pointer_ = nullptr;
+    wl_surface *focusedSurface_ = nullptr;
     wl_surface *cursorSurface_ = nullptr;
 
     //! Non-owning; the theme owns the images it hands out. Null when @c shm_
@@ -76,8 +89,8 @@ class WaylandMouseListener : public MouseListener
     wl_cursor_theme *cursorTheme_ = nullptr;
 
     //! Serial of the most recent wl_pointer.enter -- the one wl_pointer.
-    //! set_cursor must be called with. 0 (never a valid serial) until the
-    //! first enter arrives.
+    //! set_cursor must be called with. focusedSurface_ tracks validity because
+    //! the serial counter can wrap through zero.
     u32 enterSerial_ = 0;
 
     /**

@@ -32,7 +32,7 @@ int createAnonymousFile(off_t size)
         return -1;
     if (ftruncate(fd, size) < 0)
     {
-        close(fd);
+        ::close(fd);
         return -1;
     }
     return fd;
@@ -51,6 +51,9 @@ const xdg_surface_listener WaylandWindowManager::xdgSurfaceListener_ = {handleXd
 const xdg_toplevel_listener WaylandWindowManager::xdgToplevelListener_ = {
     handleXdgToplevelConfigure, handleXdgToplevelClose, handleXdgToplevelConfigureBounds};
 
+const zxdg_toplevel_decoration_v1_listener WaylandWindowManager::xdgToplevelDecorationListener_ = {
+    handleXdgToplevelDecorationConfigure};
+
 WaylandWindowManager::WaylandWindowManager(const WindowDetails &windowDetails, GraphicsAPI graphicsAPI,
                                            std::unique_ptr<WaylandSurfaceRole> role)
     : role_(std::move(role)), display_(nullptr), registry_(nullptr), compositor_(nullptr), surface_(nullptr),
@@ -59,9 +62,11 @@ WaylandWindowManager::WaylandWindowManager(const WindowDetails &windowDetails, G
       shmBuffer_(nullptr), shmData_(nullptr), shmSize_(0), shmWidth_(0), shmHeight_(0), eglWindow_(nullptr),
       eglDisplay_(nullptr), eglContext_(nullptr), eglSurface_(nullptr), windowDetails_(windowDetails), windowFlags_{},
       graphicsAPI_(graphicsAPI), windowShouldClose_(false), configured_(false),
+      floatingWidth_(windowDetails.width), floatingHeight_(windowDetails.height),
       keyboardListener_(std::make_unique<WaylandKeyboardListener>(&windowFlags_)),
       mouseListener_(std::make_unique<WaylandMouseListener>())
 {
+    mouseListener_->owner_ = this;
 }
 
 WaylandWindowManager::~WaylandWindowManager()
@@ -73,8 +78,9 @@ WaylandWindowManager::WaylandWindowManager(WaylandWindowManager &&other) noexcep
     : role_(std::move(other.role_)), display_(std::exchange(other.display_, nullptr)),
       registry_(std::exchange(other.registry_, nullptr)), compositor_(std::exchange(other.compositor_, nullptr)),
       surface_(std::exchange(other.surface_, nullptr)), seat_(std::exchange(other.seat_, nullptr)),
-      shm_(std::exchange(other.shm_, nullptr)), xdgWmBase_(std::exchange(other.xdgWmBase_, nullptr)),
-      xdgSurface_(std::exchange(other.xdgSurface_, nullptr)), xdgToplevel_(std::exchange(other.xdgToplevel_, nullptr)),
+      seatGlobalName_(std::exchange(other.seatGlobalName_, 0)), shm_(std::exchange(other.shm_, nullptr)),
+      xdgWmBase_(std::exchange(other.xdgWmBase_, nullptr)), xdgSurface_(std::exchange(other.xdgSurface_, nullptr)),
+      xdgToplevel_(std::exchange(other.xdgToplevel_, nullptr)),
       xdgDecorationManager_(std::exchange(other.xdgDecorationManager_, nullptr)),
       xdgToplevelDecoration_(std::exchange(other.xdgToplevelDecoration_, nullptr)),
       keyboard_(std::exchange(other.keyboard_, nullptr)), pointer_(std::exchange(other.pointer_, nullptr)),
@@ -83,7 +89,15 @@ WaylandWindowManager::WaylandWindowManager(WaylandWindowManager &&other) noexcep
       eglWindow_(std::exchange(other.eglWindow_, nullptr)), eglDisplay_(std::exchange(other.eglDisplay_, nullptr)),
       eglContext_(std::exchange(other.eglContext_, nullptr)), eglSurface_(std::exchange(other.eglSurface_, nullptr)),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
-      windowShouldClose_(other.windowShouldClose_), configured_(other.configured_),
+      windowShouldClose_(other.windowShouldClose_), configured_(std::exchange(other.configured_, false)),
+      maximized_(std::exchange(other.maximized_, false)),
+      pendingMaximized_(std::exchange(other.pendingMaximized_, false)),
+      pendingFloating_(std::exchange(other.pendingFloating_, true)),
+      pendingWidth_(std::exchange(other.pendingWidth_, 0)), pendingHeight_(std::exchange(other.pendingHeight_, 0)),
+      floatingWidth_(other.floatingWidth_), floatingHeight_(other.floatingHeight_),
+      decorationMode_(std::exchange(other.decorationMode_, DecorationMode::ClientSide)),
+      pendingDecorationMode_(std::exchange(other.pendingDecorationMode_, DecorationMode::ClientSide)),
+      hitTest_(std::move(other.hitTest_)), caption_(other.caption_), captionSerial_(other.captionSerial_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_))
 {
     rebindListeners();
@@ -101,6 +115,7 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         compositor_ = std::exchange(other.compositor_, nullptr);
         surface_ = std::exchange(other.surface_, nullptr);
         seat_ = std::exchange(other.seat_, nullptr);
+        seatGlobalName_ = std::exchange(other.seatGlobalName_, 0);
         shm_ = std::exchange(other.shm_, nullptr);
         xdgWmBase_ = std::exchange(other.xdgWmBase_, nullptr);
         xdgSurface_ = std::exchange(other.xdgSurface_, nullptr);
@@ -122,7 +137,19 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         windowFlags_ = other.windowFlags_;
         graphicsAPI_ = other.graphicsAPI_;
         windowShouldClose_ = other.windowShouldClose_;
-        configured_ = other.configured_;
+        configured_ = std::exchange(other.configured_, false);
+        maximized_ = std::exchange(other.maximized_, false);
+        pendingMaximized_ = std::exchange(other.pendingMaximized_, false);
+        pendingFloating_ = std::exchange(other.pendingFloating_, true);
+        pendingWidth_ = std::exchange(other.pendingWidth_, 0);
+        pendingHeight_ = std::exchange(other.pendingHeight_, 0);
+        floatingWidth_ = other.floatingWidth_;
+        floatingHeight_ = other.floatingHeight_;
+        decorationMode_ = std::exchange(other.decorationMode_, DecorationMode::ClientSide);
+        pendingDecorationMode_ = std::exchange(other.pendingDecorationMode_, DecorationMode::ClientSide);
+        hitTest_ = std::move(other.hitTest_);
+        caption_ = other.caption_;
+        captionSerial_ = other.captionSerial_;
         keyboardListener_ = std::move(other.keyboardListener_);
         mouseListener_ = std::move(other.mouseListener_);
         rebindListeners();
@@ -136,6 +163,8 @@ void WaylandWindowManager::rebindListeners() noexcept
         role_->rebind(&windowDetails_, &windowFlags_);
     if (keyboardListener_)
         keyboardListener_->setWindowFlags(&windowFlags_);
+    if (mouseListener_)
+        mouseListener_->owner_ = this;
     const auto rebind = [this](auto *proxy)
     {
         if (proxy)
@@ -146,6 +175,7 @@ void WaylandWindowManager::rebindListeners() noexcept
     rebind(xdgWmBase_);
     rebind(xdgSurface_);
     rebind(xdgToplevel_);
+    rebind(xdgToplevelDecoration_);
 }
 
 void WaylandWindowManager::createWindow(const char *windowName)
@@ -181,17 +211,19 @@ void WaylandWindowManager::createWindow(const char *windowName)
         xdgToplevel_ = xdg_surface_get_toplevel(xdgSurface_);
         xdg_toplevel_add_listener(xdgToplevel_, &xdgToplevelListener_, this);
 
-        xdg_toplevel_set_title(xdgToplevel_, windowName);
+        xdg_toplevel_set_title(xdgToplevel_, windowName ? windowName : "");
         xdg_toplevel_set_app_id(xdgToplevel_, "wma_app");
 
-        //! Server-side decorations only: if the compositor doesn't advertise
-        //! zxdg_decoration_manager_v1 (e.g. GNOME/Mutter), the surface stays
-        //! borderless — this library does not implement client-side decorations.
+        //! Without xdg-decoration, visuals remain the application's responsibility.
         if (xdgDecorationManager_)
         {
             xdgToplevelDecoration_ =
                 zxdg_decoration_manager_v1_get_toplevel_decoration(xdgDecorationManager_, xdgToplevel_);
-            zxdg_toplevel_decoration_v1_set_mode(xdgToplevelDecoration_, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+            zxdg_toplevel_decoration_v1_add_listener(xdgToplevelDecoration_, &xdgToplevelDecorationListener_, this);
+            const u32 mode = windowDetails_.decorationMode == DecorationMode::ClientSide
+                                 ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                                 : ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+            zxdg_toplevel_decoration_v1_set_mode(xdgToplevelDecoration_, mode);
         }
     }
 
@@ -318,14 +350,14 @@ void WaylandWindowManager::allocateShmBuffer(i32 width, i32 height)
     void *data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (data == MAP_FAILED)
     {
-        close(fd);
+        ::close(fd);
         throw WMAException("Failed to mmap Wayland shm buffer");
     }
 
     wl_shm_pool *pool = wl_shm_create_pool(shm_, fd, size);
     shmBuffer_ = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
-    close(fd);
+    ::close(fd);
 
     std::memset(data, 0, static_cast<usize>(size));
     shmData_ = data;
@@ -516,6 +548,134 @@ MouseListener &WaylandWindowManager::getMouseListener() noexcept
 {
     return *mouseListener_;
 }
+
+bool WaylandWindowManager::minimize() noexcept
+{
+    if (!xdgToplevel_)
+        return false;
+    xdg_toplevel_set_minimized(xdgToplevel_);
+    return true;
+}
+
+bool WaylandWindowManager::maximize() noexcept
+{
+    if (!xdgToplevel_)
+        return false;
+    xdg_toplevel_set_maximized(xdgToplevel_);
+    return true;
+}
+
+bool WaylandWindowManager::restore() noexcept
+{
+    if (!xdgToplevel_)
+        return false;
+    xdg_toplevel_unset_maximized(xdgToplevel_);
+    return true;
+}
+
+bool WaylandWindowManager::isMaximized() const noexcept
+{
+    return maximized_;
+}
+
+void WaylandWindowManager::close() noexcept
+{
+    windowShouldClose_ = true;
+}
+
+bool WaylandWindowManager::setHitTest(HitTest hitTest)
+{
+    if (!xdgToplevel_)
+        return false;
+    hitTest_ = std::move(hitTest);
+    if (mouseListener_)
+        mouseListener_->updateHitCursor();
+    return true;
+}
+
+bool WaylandWindowManager::claimPress(u32 serial, f64 x, f64 y)
+{
+    if (!hitTest_ || !xdgToplevel_ || !seat_)
+        return false;
+
+    u32 edge = XDG_TOPLEVEL_RESIZE_EDGE_NONE;
+    switch (hitTest_(x, y))
+    {
+    case WindowHit::Client:
+        return false;
+    case WindowHit::Caption:
+        if (caption_.press(x, y))
+            detail::toggleMaximized(*this);
+        else
+            captionSerial_ = serial;
+        return true;
+    case WindowHit::Top:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_TOP;
+        break;
+    case WindowHit::Bottom:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM;
+        break;
+    case WindowHit::Left:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
+        break;
+    case WindowHit::Right:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
+        break;
+    case WindowHit::TopLeft:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT;
+        break;
+    case WindowHit::TopRight:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT;
+        break;
+    case WindowHit::BottomLeft:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT;
+        break;
+    case WindowHit::BottomRight:
+        edge = XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT;
+        break;
+    }
+
+    if (!windowDetails_.resizable)
+        return false;
+    xdg_toplevel_resize(xdgToplevel_, seat_, serial, edge);
+    return true;
+}
+
+void WaylandWindowManager::dragTo(f64 x, f64 y)
+{
+    //! The press serial stays valid while the button is held.
+    if (caption_.moved(x, y) && xdgToplevel_ && seat_)
+        xdg_toplevel_move(xdgToplevel_, seat_, captionSerial_);
+}
+
+void WaylandWindowManager::releaseClaim() noexcept
+{
+    caption_.released();
+}
+
+void WaylandWindowManager::cancelClaim() noexcept
+{
+    caption_.cancel();
+}
+
+SystemCursor WaylandWindowManager::hoverCursor(f64 x, f64 y) const
+{
+    return hitTest_ && windowDetails_.resizable ? detail::cursorFor(hitTest_(x, y)) : SystemCursor::Default;
+}
+
+bool WaylandWindowManager::setTitle(const char *title) noexcept
+{
+    if (!xdgToplevel_ || !title)
+        return false;
+    xdg_toplevel_set_title(xdgToplevel_, title);
+    return true;
+}
+
+DecorationMode WaylandWindowManager::getDecorationMode() const noexcept
+{
+    return decorationMode_;
+}
+
 bool WaylandWindowManager::shouldClose() const
 {
     return windowShouldClose_ || (role_ && role_->shouldClose());
@@ -531,6 +691,14 @@ GraphicsAPI WaylandWindowManager::getGraphicsAPI() const
 
 WmaCode WaylandWindowManager::destroy()
 {
+    maximized_ = false;
+    pendingMaximized_ = false;
+    pendingFloating_ = true;
+    pendingWidth_ = 0;
+    pendingHeight_ = 0;
+    configured_ = false;
+    decorationMode_ = DecorationMode::ClientSide;
+    pendingDecorationMode_ = DecorationMode::ClientSide;
     keyboardListener_.reset();
     mouseListener_.reset();
 
@@ -575,6 +743,7 @@ WmaCode WaylandWindowManager::destroy()
         wl_seat_destroy(seat_);
         seat_ = nullptr;
     }
+    seatGlobalName_ = 0;
     if (shm_)
     {
         wl_shm_destroy(shm_);
@@ -650,9 +819,10 @@ void WaylandWindowManager::handleRegistryGlobal(void *data, wl_registry *registr
         manager->xdgWmBase_ = static_cast<xdg_wm_base *>(wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
         xdg_wm_base_add_listener(manager->xdgWmBase_, &xdgWmBaseListener_, manager);
     }
-    else if (strcmp(interface, wl_seat_interface.name) == 0)
+    else if (strcmp(interface, wl_seat_interface.name) == 0 && !manager->seat_)
     {
         manager->seat_ = static_cast<wl_seat *>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
+        manager->seatGlobalName_ = name;
         wl_seat_add_listener(manager->seat_, &seatListener_, manager);
     }
     else if (strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
@@ -662,13 +832,24 @@ void WaylandWindowManager::handleRegistryGlobal(void *data, wl_registry *registr
     }
 }
 
-void WaylandWindowManager::handleRegistryGlobalRemove(void *, wl_registry *, u32)
+void WaylandWindowManager::handleRegistryGlobalRemove(void *data, wl_registry *, u32 name)
 {
+    auto *manager = static_cast<WaylandWindowManager *>(data);
+    if (!manager->seat_ || manager->seatGlobalName_ != name)
+        return;
+
+    //! A removed seat cannot authorize a later interactive window operation.
+    handleSeatCapabilities(manager, manager->seat_, 0);
+    wl_seat_destroy(manager->seat_);
+    manager->seat_ = nullptr;
+    manager->seatGlobalName_ = 0;
 }
 
 void WaylandWindowManager::handleSeatCapabilities(void *data, wl_seat *seat, u32 capabilities)
 {
     auto *manager = static_cast<WaylandWindowManager *>(data);
+    if (seat != manager->seat_)
+        return;
 
     if (capabilities & WL_SEAT_CAPABILITY_KEYBOARD)
     {
@@ -733,12 +914,28 @@ void WaylandWindowManager::handleXdgSurfaceConfigure(void *data, xdg_surface *xd
     auto *manager = static_cast<WaylandWindowManager *>(data);
     xdg_surface_ack_configure(xdg_surface, serial);
     manager->configured_ = true;
-}
+    //! Role and decoration events form one configuration ending at this event.
+    manager->maximized_ = manager->pendingMaximized_;
+    manager->decorationMode_ = manager->pendingDecorationMode_;
 
-void WaylandWindowManager::handleXdgToplevelConfigure(void *data, xdg_toplevel *, i32 width, i32 height, wl_array *)
-{
-    auto *manager = static_cast<WaylandWindowManager *>(data);
-    if (width > 0 && height > 0 && (width != manager->windowDetails_.width || height != manager->windowDetails_.height))
+    //! Zero leaves the size to the client. Leaving maximized or fullscreen that
+    //! way must return to the floating size rather than keep the larger one.
+    const bool floating = manager->pendingFloating_;
+    const i32 width = manager->pendingWidth_ > 0 ? manager->pendingWidth_
+                      : floating                 ? manager->floatingWidth_
+                                                 : manager->windowDetails_.width;
+    const i32 height = manager->pendingHeight_ > 0 ? manager->pendingHeight_
+                       : floating                  ? manager->floatingHeight_
+                                                   : manager->windowDetails_.height;
+    manager->pendingWidth_ = 0;
+    manager->pendingHeight_ = 0;
+    if (floating)
+    {
+        manager->floatingWidth_ = width;
+        manager->floatingHeight_ = height;
+    }
+
+    if (width != manager->windowDetails_.width || height != manager->windowDetails_.height)
     {
         manager->windowDetails_.width = width;
         manager->windowDetails_.height = height;
@@ -754,14 +951,51 @@ void WaylandWindowManager::handleXdgToplevelConfigure(void *data, xdg_toplevel *
     }
 }
 
+void WaylandWindowManager::handleXdgToplevelConfigure(void *data, xdg_toplevel *, i32 width, i32 height,
+                                                      wl_array *states)
+{
+    auto *manager = static_cast<WaylandWindowManager *>(data);
+    manager->pendingWidth_ = width;
+    manager->pendingHeight_ = height;
+    manager->pendingMaximized_ = false;
+    manager->pendingFloating_ = true;
+    if (states && states->data)
+    {
+        const auto *values = static_cast<const u32 *>(states->data);
+        for (usize i = 0; i < states->size / sizeof(u32); ++i)
+        {
+            if (values[i] == XDG_TOPLEVEL_STATE_MAXIMIZED)
+                manager->pendingMaximized_ = true;
+            if (values[i] == XDG_TOPLEVEL_STATE_MAXIMIZED || values[i] == XDG_TOPLEVEL_STATE_FULLSCREEN)
+                manager->pendingFloating_ = false;
+        }
+    }
+}
+
 void WaylandWindowManager::handleXdgToplevelClose(void *data, xdg_toplevel *)
 {
     auto *manager = static_cast<WaylandWindowManager *>(data);
-    manager->windowShouldClose_ = true;
+    manager->close();
 }
 
 void WaylandWindowManager::handleXdgToplevelConfigureBounds(void *, xdg_toplevel *, i32, i32)
 {
+}
+
+void WaylandWindowManager::handleXdgToplevelDecorationConfigure(void *data, zxdg_toplevel_decoration_v1 *, u32 mode)
+{
+    auto *manager = static_cast<WaylandWindowManager *>(data);
+    switch (mode)
+    {
+    case ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE:
+        manager->pendingDecorationMode_ = DecorationMode::ClientSide;
+        break;
+    case ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE:
+        manager->pendingDecorationMode_ = DecorationMode::ServerSide;
+        break;
+    default:
+        break;
+    }
 }
 
 std::unique_ptr<IWindowManager> createWaylandWindowManager(const WindowDetails &details, GraphicsAPI api,

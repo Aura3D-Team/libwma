@@ -221,7 +221,6 @@ void MouseListener::dispatchButtonPress(i32 button)
     const InputContextId ctx = contexts_.resolved();
     if (ctx >= buttonBindings_.size()) [[unlikely]]
         return;
-    [[assume(ctx < buttonBindings_.size())]];
 
     buttonBindings_[ctx][static_cast<usize>(button)].executePress();
 }
@@ -236,7 +235,6 @@ void MouseListener::dispatchButtonRelease(i32 button)
     const InputContextId ctx = contexts_.resolved();
     if (ctx >= buttonBindings_.size()) [[unlikely]]
         return;
-    [[assume(ctx < buttonBindings_.size())]];
 
     buttonBindings_[ctx][static_cast<usize>(button)].executeRelease();
 }

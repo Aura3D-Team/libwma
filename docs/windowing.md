@@ -91,7 +91,7 @@ half-pressed. Buttons drawn in the title bar must report `Client`.
 | Native Wayland | `xdg_toplevel.move/resize` with the press serial | |
 | Native X11 | EWMH `_NET_WM_MOVERESIZE` | Motif hints remove the frame |
 | SDL3 | `SDL_SetWindowHitTest` | `false` in the browser and on Android |
-| GLFW on X11 | EWMH through GLFW's native handles | |
+| GLFW on X11 | EWMH through GLFW's native handles | GLFW 3.4 or newer |
 | GLFW elsewhere | `false` | `ClientSide` falls back to GLFW's own frame |
 
 | UI action | WMA call |

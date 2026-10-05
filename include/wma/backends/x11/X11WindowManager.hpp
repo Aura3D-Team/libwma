@@ -72,6 +72,8 @@ class X11WindowManager : public IWindowManager
     Atom netWmState_ = 0;
     Atom netWmStateMaximizedVert_ = 0;
     Atom netWmStateMaximizedHorz_ = 0;
+    Atom netWmName_ = 0;
+    Atom utf8String_ = 0;
     bool maximized_ = false;
 
     //! Software rendering (GraphicsAPI::CPU)

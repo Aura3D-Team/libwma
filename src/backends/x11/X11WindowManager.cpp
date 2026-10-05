@@ -3,12 +3,14 @@
 #include "backends/x11/X11MoveResize.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
 #include <poll.h>
+#include <span>
 #include <utility>
 
 //! For XkbSetDetectableAutoRepeat; see createWindow().
@@ -40,7 +42,8 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
     : display_(std::exchange(other.display_, nullptr)), window_(std::exchange(other.window_, 0)),
       colormap_(std::exchange(other.colormap_, 0)), wmDeleteWindow_(other.wmDeleteWindow_),
       netWmState_(other.netWmState_), netWmStateMaximizedVert_(other.netWmStateMaximizedVert_),
-      netWmStateMaximizedHorz_(other.netWmStateMaximizedHorz_), maximized_(std::exchange(other.maximized_, false)),
+      netWmStateMaximizedHorz_(other.netWmStateMaximizedHorz_), netWmName_(other.netWmName_),
+      utf8String_(other.utf8String_), maximized_(std::exchange(other.maximized_, false)),
       gc_(std::exchange(other.gc_, nullptr)), image_(std::exchange(other.image_, nullptr)),
       glContext_(std::exchange(other.glContext_, nullptr)), fbConfig_(other.fbConfig_),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
@@ -64,6 +67,8 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         netWmState_ = other.netWmState_;
         netWmStateMaximizedVert_ = other.netWmStateMaximizedVert_;
         netWmStateMaximizedHorz_ = other.netWmStateMaximizedHorz_;
+        netWmName_ = other.netWmName_;
+        utf8String_ = other.utf8String_;
         maximized_ = std::exchange(other.maximized_, false);
         gc_ = std::exchange(other.gc_, nullptr);
         image_ = std::exchange(other.image_, nullptr);
@@ -190,11 +195,19 @@ void X11WindowManager::createWindow(const char *windowName)
         throw WindowException("Failed to create X11 window");
     }
 
-    setTitle(windowName);
+    //! One round trip for every atom the window uses afterwards.
+    std::array<const char *, 5> atomNames{"_NET_WM_STATE", "_NET_WM_STATE_MAXIMIZED_VERT",
+                                          "_NET_WM_STATE_MAXIMIZED_HORZ", "_NET_WM_NAME", "UTF8_STRING"};
+    std::array<Atom, atomNames.size()> atoms{};
+    XInternAtoms(display_, const_cast<char **>(atomNames.data()), static_cast<int>(atomNames.size()), False,
+                 atoms.data());
+    netWmState_ = atoms[0];
+    netWmStateMaximizedVert_ = atoms[1];
+    netWmStateMaximizedHorz_ = atoms[2];
+    netWmName_ = atoms[3];
+    utf8String_ = atoms[4];
 
-    netWmState_ = XInternAtom(display_, "_NET_WM_STATE", False);
-    netWmStateMaximizedVert_ = XInternAtom(display_, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-    netWmStateMaximizedHorz_ = XInternAtom(display_, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    setTitle(windowName);
 
     if (windowDetails_.decorationMode == DecorationMode::ClientSide)
     {
@@ -304,15 +317,9 @@ void X11WindowManager::refreshMaximized() noexcept
         return;
 
     //! Format-32 properties arrive as long-sized items, which is what Atom is.
-    const auto *atoms = reinterpret_cast<const Atom *>(property);
-    bool hasVertical = false;
-    bool hasHorizontal = false;
-    for (unsigned long index = 0; index < count; ++index)
-    {
-        hasVertical |= atoms[index] == netWmStateMaximizedVert_;
-        hasHorizontal |= atoms[index] == netWmStateMaximizedHorz_;
-    }
-    maximized_ = hasVertical && hasHorizontal;
+    const std::span atoms{reinterpret_cast<const Atom *>(property), count};
+    maximized_ = std::ranges::find(atoms, netWmStateMaximizedVert_) != atoms.end() &&
+                 std::ranges::find(atoms, netWmStateMaximizedHorz_) != atoms.end();
 }
 
 void X11WindowManager::close() noexcept
@@ -374,8 +381,7 @@ bool X11WindowManager::setTitle(const char *title) noexcept
         return false;
 
     XStoreName(display_, window_, title);
-    XChangeProperty(display_, window_, XInternAtom(display_, "_NET_WM_NAME", False),
-                    XInternAtom(display_, "UTF8_STRING", False), 8, PropModeReplace,
+    XChangeProperty(display_, window_, netWmName_, utf8String_, 8, PropModeReplace,
                     reinterpret_cast<const unsigned char *>(title), static_cast<int>(length));
     XFlush(display_);
     return true;

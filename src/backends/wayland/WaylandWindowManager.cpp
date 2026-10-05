@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <cstring>
 #include <poll.h>
+#include <span>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <utility>
@@ -957,19 +958,15 @@ void WaylandWindowManager::handleXdgToplevelConfigure(void *data, xdg_toplevel *
     auto *manager = static_cast<WaylandWindowManager *>(data);
     manager->pendingWidth_ = width;
     manager->pendingHeight_ = height;
-    manager->pendingMaximized_ = false;
-    manager->pendingFloating_ = true;
-    if (states && states->data)
+    const std::span<const u32> values =
+        states && states->data ? std::span{static_cast<const u32 *>(states->data), states->size / sizeof(u32)}
+                               : std::span<const u32>{};
+    const auto has = [values](u32 state)
     {
-        const auto *values = static_cast<const u32 *>(states->data);
-        for (usize i = 0; i < states->size / sizeof(u32); ++i)
-        {
-            if (values[i] == XDG_TOPLEVEL_STATE_MAXIMIZED)
-                manager->pendingMaximized_ = true;
-            if (values[i] == XDG_TOPLEVEL_STATE_MAXIMIZED || values[i] == XDG_TOPLEVEL_STATE_FULLSCREEN)
-                manager->pendingFloating_ = false;
-        }
-    }
+        return std::ranges::find(values, state) != values.end();
+    };
+    manager->pendingMaximized_ = has(XDG_TOPLEVEL_STATE_MAXIMIZED);
+    manager->pendingFloating_ = !manager->pendingMaximized_ && !has(XDG_TOPLEVEL_STATE_FULLSCREEN);
 }
 
 void WaylandWindowManager::handleXdgToplevelClose(void *data, xdg_toplevel *)

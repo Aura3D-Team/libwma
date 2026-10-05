@@ -76,6 +76,7 @@ void WaylandMouseListener::detach() noexcept
         wl_cursor_theme_destroy(cursorTheme_);
         cursorTheme_ = nullptr;
     }
+    cursors_ = {};
     if (cursorSurface_)
     {
         wl_surface_destroy(cursorSurface_);
@@ -282,7 +283,10 @@ void WaylandMouseListener::applyCursorState()
     if (!cursorTheme_ || !cursorSurface_)
         return;
 
-    wl_cursor *cursor = loadCursor(cursorTheme_, effectiveSystemCursor());
+    const SystemCursor shape = effectiveSystemCursor();
+    wl_cursor *&cursor = cursors_[static_cast<usize>(shape)];
+    if (!cursor)
+        cursor = loadCursor(cursorTheme_, shape);
     if (!cursor || cursor->image_count == 0)
         return;
 

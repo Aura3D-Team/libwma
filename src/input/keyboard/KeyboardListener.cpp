@@ -213,7 +213,6 @@ void KeyboardListener::dispatchKeyPress(Key key, bool repeat)
     const InputContextId ctx = contexts_.resolved();
     if (ctx >= keyBindings_.size()) [[unlikely]]
         return;
-    [[assume(ctx < keyBindings_.size())]];
 
     /*
      * An auto-repeat is deliberately not delivered to the binding table: a
@@ -244,7 +243,6 @@ void KeyboardListener::dispatchKeyRelease(Key key)
     const InputContextId ctx = contexts_.resolved();
     if (ctx >= keyBindings_.size()) [[unlikely]]
         return;
-    [[assume(ctx < keyBindings_.size())]];
 
     keyBindings_[ctx][static_cast<usize>(k)].executeRelease();
 

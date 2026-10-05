@@ -2,6 +2,7 @@
 #define WMA_BACKENDS_WAYLAND_MOUSE_LISTENER_HPP
 
 #include "wma/input/mouse/MouseListener.hpp"
+#include <array>
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 
@@ -87,6 +88,8 @@ class WaylandMouseListener : public MouseListener
     //! or the theme load failed, in which case the cursor can be hidden but
     //! never restored (see initialize()'s doc comment).
     wl_cursor_theme *cursorTheme_ = nullptr;
+    //! Resolved from cursorTheme_ on first use, so a hover change costs no name search.
+    std::array<wl_cursor *, SYSTEM_CURSOR_COUNT> cursors_{};
 
     //! Serial of the most recent wl_pointer.enter -- the one wl_pointer.
     //! set_cursor must be called with. focusedSurface_ tracks validity because

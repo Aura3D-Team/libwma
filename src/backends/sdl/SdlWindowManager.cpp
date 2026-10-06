@@ -53,8 +53,7 @@ SdlWindowManager::SdlWindowManager(SdlWindowManager &&other) noexcept
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
       touchListener_(std::move(other.touchListener_)), frameHitTest_(std::move(other.frameHitTest_)),
-      windowShouldClose_(other.windowShouldClose_),
-      ownsSubsystem_(std::exchange(other.ownsSubsystem_, false))
+      windowShouldClose_(other.windowShouldClose_), ownsSubsystem_(std::exchange(other.ownsSubsystem_, false))
 {
 }
 

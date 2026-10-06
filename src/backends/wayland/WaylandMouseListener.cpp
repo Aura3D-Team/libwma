@@ -189,7 +189,8 @@ void WaylandMouseListener::handleButton(u32 serial, u32, u32 button, u32 state)
         {
             //! Assigned, not just set: a claim whose release the compositor took
             //! must not swallow the release of the next, unclaimed press.
-            pressClaimed_ = focusedSurface_ && owner_ && owner_->claimPress(serial, currentPosition_.x, currentPosition_.y);
+            pressClaimed_ =
+                focusedSurface_ && owner_ && owner_->claimPress(serial, currentPosition_.x, currentPosition_.y);
             if (pressClaimed_)
                 return;
         }

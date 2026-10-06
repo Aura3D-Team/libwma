@@ -62,8 +62,8 @@ WaylandWindowManager::WaylandWindowManager(const WindowDetails &windowDetails, G
       xdgDecorationManager_(nullptr), xdgToplevelDecoration_(nullptr), keyboard_(nullptr), pointer_(nullptr),
       shmBuffer_(nullptr), shmData_(nullptr), shmSize_(0), shmWidth_(0), shmHeight_(0), eglWindow_(nullptr),
       eglDisplay_(nullptr), eglContext_(nullptr), eglSurface_(nullptr), windowDetails_(windowDetails), windowFlags_{},
-      graphicsAPI_(graphicsAPI), windowShouldClose_(false), configured_(false),
-      floatingWidth_(windowDetails.width), floatingHeight_(windowDetails.height),
+      graphicsAPI_(graphicsAPI), windowShouldClose_(false), configured_(false), floatingWidth_(windowDetails.width),
+      floatingHeight_(windowDetails.height),
       keyboardListener_(std::make_unique<WaylandKeyboardListener>(&windowFlags_)),
       mouseListener_(std::make_unique<WaylandMouseListener>())
 {
@@ -301,7 +301,8 @@ void WaylandWindowManager::initEGL()
         throw GraphicsException("eglChooseConfig found no suitable Wayland config");
 
 #ifdef EGL_VERSION_1_5
-    //! 3.3 core: all the clients need, and what Mesa (4.5), macOS (4.1) and GLES-class drivers all offer; 4.6 failed on Mesa. Some drivers return exactly 3.3.
+    //! 3.3 core: all the clients need, and what Mesa (4.5), macOS (4.1) and GLES-class drivers all offer; 4.6 failed on
+    //! Mesa. Some drivers return exactly 3.3.
     const EGLint contextAttribs[] = {
         EGL_CONTEXT_MAJOR_VERSION,           3,       EGL_CONTEXT_MINOR_VERSION, 3, EGL_CONTEXT_OPENGL_PROFILE_MASK,
         EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT, EGL_NONE};

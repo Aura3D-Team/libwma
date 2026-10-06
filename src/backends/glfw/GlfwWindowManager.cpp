@@ -116,7 +116,8 @@ void GlfwWindowManager::createWindow(const char *windowName)
         break;
     case GraphicsAPI::OpenGL:
         glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-        //! 3.3 core: all the clients need, and what Mesa (4.5), macOS (4.1) and GLES-class drivers all offer; 4.6 failed on Mesa. Some drivers return exactly 3.3.
+        //! 3.3 core: all the clients need, and what Mesa (4.5), macOS (4.1) and GLES-class drivers all offer; 4.6
+        //! failed on Mesa. Some drivers return exactly 3.3.
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);

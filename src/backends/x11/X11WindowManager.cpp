@@ -48,8 +48,8 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
       glContext_(std::exchange(other.glContext_, nullptr)), fbConfig_(other.fbConfig_),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
-      windowShouldClose_(other.windowShouldClose_), hitTest_(std::move(other.hitTest_)),
-      caption_(other.caption_), captionButton_(other.captionButton_)
+      windowShouldClose_(other.windowShouldClose_), hitTest_(std::move(other.hitTest_)), caption_(other.caption_),
+      captionButton_(other.captionButton_)
 {
     if (mouseListener_)
         mouseListener_->owner_ = this;

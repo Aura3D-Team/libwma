@@ -113,7 +113,8 @@ void SdlWindowManager::createWindow(const char *windowName)
         throw GraphicsException("Unsupported graphics API for SDL");
     }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+    // Android has OpenGL ES only, so a desktop core profile request fails there.
     // Emscripten's OpenGL backend is WebGL2 (Aura3D compiles with
     // -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2, since its ES3-only
     // entry points like glBindBufferBase need it). SDL_GL_CreateContext
@@ -572,8 +573,10 @@ void SdlWindowManager::initializeSDL()
 
     if (graphicsAPI_ == GraphicsAPI::OpenGL)
     {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+        //! 3.3 core: all the clients need, and what Mesa (4.5), macOS (4.1) and GLES-class drivers all
+        //! offer; 4.6 failed on Mesa. Some drivers return exactly 3.3.
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);

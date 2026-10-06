@@ -301,8 +301,9 @@ void WaylandWindowManager::initEGL()
         throw GraphicsException("eglChooseConfig found no suitable Wayland config");
 
 #ifdef EGL_VERSION_1_5
+    //! 3.3 core: all the clients need, and what Mesa (4.5), macOS (4.1) and GLES-class drivers all offer; 4.6 failed on Mesa. Some drivers return exactly 3.3.
     const EGLint contextAttribs[] = {
-        EGL_CONTEXT_MAJOR_VERSION,           4,       EGL_CONTEXT_MINOR_VERSION, 6, EGL_CONTEXT_OPENGL_PROFILE_MASK,
+        EGL_CONTEXT_MAJOR_VERSION,           3,       EGL_CONTEXT_MINOR_VERSION, 3, EGL_CONTEXT_OPENGL_PROFILE_MASK,
         EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT, EGL_NONE};
 #else
     const EGLint contextAttribs[] = {EGL_NONE};

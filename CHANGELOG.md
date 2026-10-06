@@ -21,6 +21,7 @@ All notable changes to libwma are documented in this file.
 
 ### Fixed
 
+- OpenGL windows request a 3.3 core context instead of 4.6, which Mesa (4.5) refused. NVIDIA then returns exactly 3.3 and Mesa 4.5, so clients must not assume more. Android requests OpenGL ES 3.0, as Emscripten does, instead of a desktop profile it cannot create.
 - Wayland: a zero-size configure after maximize or fullscreen restores the last floating size instead of keeping the larger one.
 - An explicit `-Dink_DIR` is honoured instead of being overwritten by the per-platform default.
 

@@ -1,9 +1,36 @@
 #include "wma/backends/x11/X11MouseListener.hpp"
+#include "wma/backends/x11/X11WindowManager.hpp"
 #include "wma/core/Types.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
+#include <X11/cursorfont.h>
+#include <utility>
+
 namespace wma
 {
+namespace
+{
+
+//! The core cursor font has no diagonal double arrows; corners read as diagonals.
+[[nodiscard]] unsigned int toFontShape(SystemCursor shape) noexcept
+{
+    switch (shape)
+    {
+    case SystemCursor::NsResize:
+        return XC_sb_v_double_arrow;
+    case SystemCursor::EwResize:
+        return XC_sb_h_double_arrow;
+    case SystemCursor::NwseResize:
+        return XC_bottom_right_corner;
+    case SystemCursor::NeswResize:
+        return XC_bottom_left_corner;
+    case SystemCursor::Default:
+        break;
+    }
+    return XC_left_ptr;
+}
+
+} // namespace
 
 X11MouseListener::X11MouseListener() : MouseListener(), display_(nullptr)
 {
@@ -44,6 +71,14 @@ void X11MouseListener::handleEvent(const XEvent *event)
             dispatchScroll(WMAMouseScroll(0.0, scrollY));
             break;
         }
+        if (btn == Button1)
+        {
+            //! Assigned, not just set: a claim whose release the window manager
+            //! took must not swallow the release of the next, unclaimed press.
+            pressClaimed_ = owner_ && owner_->claimPress(event->xbutton);
+            if (pressClaimed_)
+                break;
+        }
         dispatchButtonPress(convertButton(btn));
         break;
     }
@@ -52,6 +87,12 @@ void X11MouseListener::handleEvent(const XEvent *event)
         const int btn = static_cast<int>(event->xbutton.button);
         if (btn >= Button4)
             break;
+        if (btn == Button1 && std::exchange(pressClaimed_, false))
+        {
+            if (owner_)
+                owner_->releaseClaim();
+            break;
+        }
         dispatchButtonRelease(convertButton(btn));
         break;
     }
@@ -69,6 +110,9 @@ void X11MouseListener::handleEvent(const XEvent *event)
         currentPosition_ = WMAMousePosition(xpos, ypos, deltaX, deltaY);
         dispatchMove(currentPosition_);
         lastPosition_ = WMAMousePosition(xpos, ypos);
+        if (pressClaimed_ && owner_)
+            owner_->dragTo(event->xmotion);
+        setHitCursor(owner_ ? owner_->hoverCursor(xpos, ypos) : SystemCursor::Default);
         break;
     }
     default:
@@ -90,9 +134,17 @@ void X11MouseListener::updateCursorState()
 {
     if (!display_ || !x11Window_)
         return;
-    if (cursorEnabled_)
+    const SystemCursor shape = effectiveSystemCursor();
+    if (cursorEnabled_ && shape == SystemCursor::Default)
     {
         XUndefineCursor(display_, x11Window_);
+    }
+    else if (cursorEnabled_)
+    {
+        Cursor &cursor = shapeCursors_[static_cast<usize>(shape)];
+        if (!cursor)
+            cursor = XCreateFontCursor(display_, toFontShape(shape));
+        XDefineCursor(display_, x11Window_, cursor);
     }
     else
     {

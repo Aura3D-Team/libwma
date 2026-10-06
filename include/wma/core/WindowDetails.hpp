@@ -3,6 +3,8 @@
 
 #include <ink/ink_base.hpp>
 
+#include "Types.hpp"
+
 namespace wma
 {
 
@@ -22,6 +24,8 @@ struct WindowDetails
     i32 targetFPS = 60;
     bool vsync = false;
     bool fullscreen = false;
+    //! A preference on Wayland; query getDecorationMode() after configure.
+    DecorationMode decorationMode = DecorationMode::ServerSide;
 };
 
 } // namespace wma

@@ -15,6 +15,11 @@ struct SDL_KeyboardEvent;
 namespace wma
 {
 
+namespace sdl
+{
+class FrameHitTest;
+}
+
 class SdlWindowManager : public IWindowManager
 {
   public:
@@ -27,6 +32,14 @@ class SdlWindowManager : public IWindowManager
     SdlWindowManager &operator=(SdlWindowManager &&) noexcept;
 
     void createWindow(const char *windowName) override;
+    bool minimize() noexcept override;
+    bool maximize() noexcept override;
+    bool restore() noexcept override;
+    [[nodiscard]] bool isMaximized() const noexcept override;
+    void close() noexcept override;
+    bool setHitTest(HitTest hitTest) override;
+    bool setTitle(const char *title) noexcept override;
+    [[nodiscard]] DecorationMode getDecorationMode() const noexcept override;
     void pollEvents() override;
     void waitEvents(int timeoutMs) override;
     void swapBuffers() override;
@@ -72,6 +85,7 @@ class SdlWindowManager : public IWindowManager
     std::unique_ptr<SDLKeyboardListener> keyboardListener_;
     std::unique_ptr<SDLMouseListener> mouseListener_;
     std::unique_ptr<SDLTouchListener> touchListener_;
+    std::unique_ptr<sdl::FrameHitTest> frameHitTest_;
 
 #ifdef __ANDROID__
     //! Last-seen ANativeWindow identity; pollEvents() compares against

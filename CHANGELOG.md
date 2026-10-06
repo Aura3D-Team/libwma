@@ -2,6 +2,29 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.5.0]
+
+### Added
+
+- Window controls through `IWindowManager`: minimize, maximize, restore, title, close request, and maximized-state query.
+- `IWindowManager::setHitTest()`: the application reports client, caption and border regions; every backend moves, resizes, shows resize cursors and maximizes on a caption double-click natively -- xdg-shell on Wayland, EWMH on X11 and GLFW-on-X11, `SDL_SetWindowHitTest` on SDL3 (SDL on Wayland moves through its own seat pointers). A title-bar press becomes a move only after 4 px of travel, so a drag never counts towards a double-click. Frame presses never reach the mouse listener. GLFW off X11, or older than 3.4, keeps its own frame, since GLFW exposes no native move there.
+- `WindowDetails::decorationMode` and `getDecorationMode()` let applications own decoration rendering. Wayland negotiates with xdg-decoration and reports the compositor's choice.
+- `MouseListener::setSystemCursor()` selects the default arrow or a resize cursor (`SystemCursor`) on every backend.
+
+### Changed
+
+- Custom `IWindowManager` implementations must implement `close() noexcept` to signal `shouldClose()` without destroying native resources. Rebuild consumers against the new interface.
+- X11 and GLFW cache the maximized state from window-manager events, so `isMaximized()` costs no X server round trip per call.
+- X11 interns its atoms in one round trip at window creation; `setTitle()` makes none.
+- Wayland resolves each cursor image from the theme once instead of on every cursor change.
+- Requires ink 0.6 (`std::max` replaces the removed `INK_MAX`).
+
+### Fixed
+
+- OpenGL windows request a 3.3 core context instead of 4.6, which Mesa (4.5) refused. NVIDIA then returns exactly 3.3 and Mesa 4.5, so clients must not assume more. Android requests OpenGL ES 3.0, as Emscripten does, instead of a desktop profile it cannot create.
+- Wayland: a zero-size configure after maximize or fullscreen restores the last floating size instead of keeping the larger one.
+- An explicit `-Dink_DIR` is honoured instead of being overwritten by the per-platform default.
+
 ## [0.4.0]
 
 ### Added

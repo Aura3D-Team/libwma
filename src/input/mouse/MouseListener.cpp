@@ -155,6 +155,29 @@ bool MouseListener::isCursorEnabled() const
     return cursorEnabled_;
 }
 
+void MouseListener::setSystemCursor(SystemCursor shape)
+{
+    if (systemCursor_ != shape)
+    {
+        systemCursor_ = shape;
+        updateCursorState();
+    }
+}
+
+SystemCursor MouseListener::getSystemCursor() const noexcept
+{
+    return systemCursor_;
+}
+
+void MouseListener::setHitCursor(SystemCursor cursor)
+{
+    if (hitCursor_ != cursor)
+    {
+        hitCursor_ = cursor;
+        updateCursorState();
+    }
+}
+
 void MouseListener::setSensitivity(f64 sensitivity)
 {
     sensitivity_ = sensitivity;
@@ -198,7 +221,6 @@ void MouseListener::dispatchButtonPress(i32 button)
     const InputContextId ctx = contexts_.resolved();
     if (ctx >= buttonBindings_.size()) [[unlikely]]
         return;
-    [[assume(ctx < buttonBindings_.size())]];
 
     buttonBindings_[ctx][static_cast<usize>(button)].executePress();
 }
@@ -213,7 +235,6 @@ void MouseListener::dispatchButtonRelease(i32 button)
     const InputContextId ctx = contexts_.resolved();
     if (ctx >= buttonBindings_.size()) [[unlikely]]
         return;
-    [[assume(ctx < buttonBindings_.size())]];
 
     buttonBindings_[ctx][static_cast<usize>(button)].executeRelease();
 }

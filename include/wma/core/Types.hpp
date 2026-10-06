@@ -37,6 +37,30 @@ enum class WindowBackend : i32
     WAYLAND
 };
 
+//! What a point of a client-decorated window is to the window manager.
+enum class WindowHit : u8
+{
+    Client,
+    Caption,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight
+};
+
+//! Window-local logical coordinates in, region out. See IWindowManager::setHitTest().
+using HitTest = std::function<WindowHit(f64 x, f64 y)>;
+
+enum class DecorationMode
+{
+    ServerSide,
+    ClientSide
+};
+
 /**
  * @brief The platform API an IAudioDevice pushes samples through.
  *

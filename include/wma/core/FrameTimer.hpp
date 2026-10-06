@@ -1,6 +1,7 @@
 #ifndef FRAMETIMER_H
 #define FRAMETIMER_H
 
+#include <algorithm>
 #include <chrono>
 #include <ink/ink_base.hpp>
 
@@ -52,7 +53,7 @@ class FrameTimer
         std::chrono::duration<f64, std::milli> elapsed = frameStart_ - lastFrameStart_;
 
         // Instantaneous delta time (needed every frame for physics/movement)
-        windowFlags_.deltaTime = INK_MAX(elapsed.count(), LIMIT_TARGET_FPS_TOLERANCE);
+        windowFlags_.deltaTime = std::max(elapsed.count(), LIMIT_TARGET_FPS_TOLERANCE);
         lastFrameStart_ = frameStart_;
 
         // Accumulate for smoothed FPS (updates every 500ms)

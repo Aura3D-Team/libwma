@@ -3,6 +3,8 @@
 // its backend via wma::getDefaultBackend() and renders with GraphicsAPI::CPU,
 // which needs no GPU loader/SDK and is supported everywhere.
 
+#include <algorithm>
+
 #include <ink/Inkogger.h>
 
 #include "wma/wma.hpp"
@@ -293,7 +295,7 @@ int main(int argc, char **argv)
         mouse.setScrollAction(wma::MouseAction{[&](const wma::WMAMouseScroll &offset)
                                                {
                                                    const f64 newSensitivity =
-                                                       INK_MAX(0.1, mouse.getSensitivity() + offset.yOffset * 0.1);
+                                                       std::max(0.1, mouse.getSensitivity() + offset.yOffset * 0.1);
                                                    mouse.setSensitivity(newSensitivity);
                                                    INK_LOG << "scroll " << offset.xOffset << "," << offset.yOffset
                                                            << " -> sensitivity " << mouse.getSensitivity();

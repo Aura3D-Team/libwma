@@ -35,6 +35,62 @@ class IWindowManager
 
     virtual void createWindow(const char *windowName) = 0;
 
+    //! Panels and other custom surface roles must not receive a title bar.
+    [[nodiscard]] virtual bool isToplevel() const noexcept
+    {
+        return true;
+    }
+
+    //! Call on the event thread after creation. True means submitted, not
+    //! accepted by the window manager; false means unavailable or invalid.
+    virtual bool minimize() noexcept
+    {
+        return false;
+    }
+    virtual bool maximize() noexcept
+    {
+        return false;
+    }
+    //! Undo maximization. Wayland cannot programmatically undo minimization.
+    virtual bool restore() noexcept
+    {
+        return false;
+    }
+    [[nodiscard]] virtual bool isMaximized() const noexcept
+    {
+        return false;
+    }
+
+    //! Signal shouldClose(); native resources remain valid until destroy().
+    virtual void close() noexcept = 0;
+
+    /**
+     * @brief Lets client-side decorations move and resize the window natively.
+     *
+     * Asked on the event thread as the pointer moves and on every primary-button
+     * press, so it must be cheap and side-effect free. A Caption press moves the
+     * window and a Caption double-click toggles maximize; an edge press resizes
+     * and edges show a resize cursor. Those presses never reach the mouse
+     * listener -- the window manager takes the release -- so no input state is
+     * left half-pressed. Client presses are delivered as usual. Empty clears it.
+     *
+     * @return False when the backend cannot honour it; draw no title bar then.
+     */
+    virtual bool setHitTest(HitTest /*hitTest*/)
+    {
+        return false;
+    }
+    virtual bool setTitle(const char * /*title*/) noexcept
+    {
+        return false;
+    }
+
+    //! WMA never draws decorations. The application paints them in ClientSide mode.
+    [[nodiscard]] virtual DecorationMode getDecorationMode() const noexcept
+    {
+        return DecorationMode::ServerSide;
+    }
+
     [[nodiscard]] virtual bool transparentFramebuffer() const noexcept
     {
         return false;

@@ -1,8 +1,11 @@
 #include "wma/backends/wayland/WaylandMouseListener.hpp"
+#include "wma/backends/wayland/WaylandWindowManager.hpp"
 #include "wma/core/Types.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
+#include <array>
 #include <linux/input-event-codes.h>
+#include <utility>
 
 namespace
 {
@@ -12,6 +15,29 @@ namespace
 //! "default" alias is not guaranteed present on every theme, so the legacy
 //! name is the safer bet for actually finding an image.
 constexpr const char *kDefaultCursorName = "left_ptr";
+
+//! Themes name the same image differently: CSS names first, then the legacy
+//! aliases older themes ship instead.
+using CursorNames = std::array<const char *, 3>;
+constexpr std::array<CursorNames, wma::SYSTEM_CURSOR_COUNT> kCursorNames{{
+    {kDefaultCursorName, nullptr, nullptr},
+    {"ns-resize", "size_ver", "sb_v_double_arrow"},
+    {"ew-resize", "size_hor", "sb_h_double_arrow"},
+    {"nwse-resize", "size_fdiag", "bottom_right_corner"},
+    {"nesw-resize", "size_bdiag", "bottom_left_corner"},
+}};
+
+[[nodiscard]] wl_cursor *loadCursor(wl_cursor_theme *theme, wma::SystemCursor shape)
+{
+    for (const char *name : kCursorNames[static_cast<usize>(shape)])
+    {
+        if (!name)
+            break;
+        if (wl_cursor *cursor = wl_cursor_theme_get_cursor(theme, name))
+            return cursor;
+    }
+    return shape == wma::SystemCursor::Default ? nullptr : loadCursor(theme, wma::SystemCursor::Default);
+}
 
 //! Cursor image size requested from the theme, in surface pixels. 24 is the
 //! conventional X11/Wayland default; asking for it explicitly keeps the
@@ -50,6 +76,7 @@ void WaylandMouseListener::detach() noexcept
         wl_cursor_theme_destroy(cursorTheme_);
         cursorTheme_ = nullptr;
     }
+    cursors_ = {};
     if (cursorSurface_)
     {
         wl_surface_destroy(cursorSurface_);
@@ -57,6 +84,10 @@ void WaylandMouseListener::detach() noexcept
     }
     //! The window manager owns the seat proxy.
     pointer_ = nullptr;
+    focusedSurface_ = nullptr;
+    enterSerial_ = 0;
+    pressClaimed_ = false;
+    hitCursor_ = SystemCursor::Default;
 }
 
 void WaylandMouseListener::initialize(wl_pointer *pointer, wl_compositor *compositor, wl_shm *shm)
@@ -89,8 +120,10 @@ void WaylandMouseListener::initialize(wl_pointer *pointer, wl_compositor *compos
     }
 }
 
-void WaylandMouseListener::handleEnter(u32 serial, wl_surface *, wl_fixed_t x, wl_fixed_t y)
+void WaylandMouseListener::handleEnter(u32 serial, wl_surface *surface, wl_fixed_t x, wl_fixed_t y)
 {
+    focusedSurface_ = surface;
+    pressClaimed_ = false;
     f64 xpos = wl_fixed_to_double(x);
     f64 ypos = wl_fixed_to_double(y);
     currentPosition_ = WMAMousePosition(xpos, ypos);
@@ -105,11 +138,19 @@ void WaylandMouseListener::handleEnter(u32 serial, wl_surface *, wl_fixed_t x, w
      * than working only up to the first re-entry.
      */
     enterSerial_ = serial;
+    hitCursor_ = owner_ ? owner_->hoverCursor(xpos, ypos) : SystemCursor::Default;
     applyCursorState();
 }
 
 void WaylandMouseListener::handleLeave(u32, wl_surface *)
 {
+    focusedSurface_ = nullptr;
+    enterSerial_ = 0;
+    hitCursor_ = SystemCursor::Default;
+    //! A compositor move takes the pointer, and with it the release.
+    pressClaimed_ = false;
+    if (owner_)
+        owner_->cancelClaim();
 }
 
 void WaylandMouseListener::handleMotion(u32, wl_fixed_t x, wl_fixed_t y)
@@ -128,17 +169,41 @@ void WaylandMouseListener::handleMotion(u32, wl_fixed_t x, wl_fixed_t y)
     currentPosition_ = WMAMousePosition(xpos, ypos, deltaX, deltaY);
     dispatchMove(currentPosition_);
     lastPosition_ = WMAMousePosition(xpos, ypos);
+    if (pressClaimed_ && owner_)
+        owner_->dragTo(xpos, ypos);
+    updateHitCursor();
 }
 
-void WaylandMouseListener::handleButton(u32, u32, u32 button, u32 state)
+void WaylandMouseListener::updateHitCursor()
+{
+    setHitCursor(owner_ && focusedSurface_ ? owner_->hoverCursor(currentPosition_.x, currentPosition_.y)
+                                           : SystemCursor::Default);
+}
+
+void WaylandMouseListener::handleButton(u32 serial, u32, u32 button, u32 state)
 {
     const i32 unifiedButton = convertButton(button);
     if (state == WL_POINTER_BUTTON_STATE_PRESSED)
     {
+        if (button == BTN_LEFT)
+        {
+            //! Assigned, not just set: a claim whose release the compositor took
+            //! must not swallow the release of the next, unclaimed press.
+            pressClaimed_ =
+                focusedSurface_ && owner_ && owner_->claimPress(serial, currentPosition_.x, currentPosition_.y);
+            if (pressClaimed_)
+                return;
+        }
         dispatchButtonPress(unifiedButton);
     }
     else if (state == WL_POINTER_BUTTON_STATE_RELEASED)
     {
+        if (button == BTN_LEFT && std::exchange(pressClaimed_, false))
+        {
+            if (owner_)
+                owner_->releaseClaim();
+            return;
+        }
         dispatchButtonRelease(unifiedButton);
     }
 }
@@ -200,7 +265,7 @@ void WaylandMouseListener::applyCursorState()
      * enter there is nothing legal to call it with; handleEnter() re-applies
      * this the moment a serial exists, so nothing is lost by skipping here.
      */
-    if (enterSerial_ == 0)
+    if (!focusedSurface_)
         return;
 
     if (!cursorEnabled_)
@@ -219,7 +284,10 @@ void WaylandMouseListener::applyCursorState()
     if (!cursorTheme_ || !cursorSurface_)
         return;
 
-    wl_cursor *cursor = wl_cursor_theme_get_cursor(cursorTheme_, kDefaultCursorName);
+    const SystemCursor shape = effectiveSystemCursor();
+    wl_cursor *&cursor = cursors_[static_cast<usize>(shape)];
+    if (!cursor)
+        cursor = loadCursor(cursorTheme_, shape);
     if (!cursor || cursor->image_count == 0)
         return;
 

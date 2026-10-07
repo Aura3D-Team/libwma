@@ -177,14 +177,14 @@ const wl_registry_listener FrameHitTest::WaylandSeats::kRegistryListener{.global
                                                                          .global_remove = globalRemove};
 
 //! Bound at version 1, so the later events these leave null are never sent.
-const wl_seat_listener FrameHitTest::WaylandSeats::kSeatListener = []
+const wl_seat_listener FrameHitTest::WaylandSeats::kSeatListener = []() noexcept
 {
     wl_seat_listener listener{};
     listener.capabilities = capabilities;
     return listener;
 }();
 
-const wl_pointer_listener FrameHitTest::WaylandSeats::kPointerListener = []
+const wl_pointer_listener FrameHitTest::WaylandSeats::kPointerListener = []() noexcept
 {
     wl_pointer_listener listener{};
     listener.enter = enter;

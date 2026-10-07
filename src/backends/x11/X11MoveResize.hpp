@@ -4,7 +4,7 @@
 #include "wma/core/Types.hpp"
 
 //! Xlib's tag for Display, so callers need not include Xlib and its macros.
-struct _XDisplay;
+struct _XDisplay; // NOLINT(bugprone-reserved-identifier): Xlib's own tag, spelled to match it
 
 namespace wma::x11
 {

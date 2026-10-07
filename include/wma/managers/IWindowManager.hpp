@@ -76,7 +76,8 @@ class IWindowManager
      *
      * @return False when the backend cannot honour it; draw no title bar then.
      */
-    virtual bool setHitTest(HitTest /*hitTest*/)
+    //! By value because every override moves it into place.
+    virtual bool setHitTest(HitTest /*hitTest*/) // NOLINT(performance-unnecessary-value-param)
     {
         return false;
     }

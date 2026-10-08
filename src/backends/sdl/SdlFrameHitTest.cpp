@@ -10,6 +10,7 @@
 #include <linux/input-event-codes.h>
 #include <wayland-client.h>
 
+#include "backends/wayland/WaylandDecorationProbe.hpp"
 #include "wma/backends/wayland/protocols/xdg-shell-client-protocol.h"
 #endif
 
@@ -298,6 +299,20 @@ bool FrameHitTest::consume(const SDL_Event &event, IWindowManager &window)
     default:
         return false;
     }
+}
+
+bool serverDecorationsAvailable() noexcept
+{
+#ifdef WMA_ENABLE_WAYLAND
+    const char *driver = SDL_GetCurrentVideoDriver();
+    auto *display = static_cast<wl_display *>(
+        SDL_GetPointerProperty(SDL_GetGlobalProperties(), SDL_PROP_GLOBAL_VIDEO_WAYLAND_WL_DISPLAY_POINTER, nullptr));
+    if (!driver || std::strcmp(driver, "wayland") != 0 || !display)
+        return true;
+    return wayland::offersServerDecorations(display);
+#else
+    return true;
+#endif
 }
 
 SDL_HitTestResult SDLCALL FrameHitTest::thunk(SDL_Window *window, const SDL_Point *point, void *data)

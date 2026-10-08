@@ -429,6 +429,7 @@ void GlfwWindowManager::initializeGLFW()
 {
     if (g_glfwRefCount.fetch_add(1, std::memory_order_acq_rel) == 0)
     {
+        glfw::selectWaylandFrame();
         if (!glfwInit())
         {
             g_glfwRefCount.fetch_sub(1, std::memory_order_acq_rel);

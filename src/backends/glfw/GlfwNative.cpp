@@ -15,6 +15,12 @@
 #include "backends/x11/X11MoveResize.hpp"
 #endif
 
+#ifdef WMA_ENABLE_WAYLAND
+#include <wayland-client.h>
+
+#include "backends/wayland/WaylandDecorationProbe.hpp"
+#endif
+
 namespace wma::glfw
 {
 
@@ -37,6 +43,20 @@ bool startMoveResize(GLFWwindow *window, WindowHit hit) noexcept
     (void)hit;
 #endif
     return false;
+}
+
+void selectWaylandFrame() noexcept
+{
+#if defined(WMA_ENABLE_WAYLAND) && defined(GLFW_WAYLAND_LIBDECOR)
+    //! GLFW has not connected yet, so the probe needs a connection of its own.
+    wl_display *display = wl_display_connect(nullptr);
+    if (!display)
+        return;
+    const bool serverSide = wayland::offersServerDecorations(display);
+    wl_display_disconnect(display);
+    if (!serverSide)
+        glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
+#endif
 }
 
 } // namespace wma::glfw

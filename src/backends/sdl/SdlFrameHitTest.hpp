@@ -61,6 +61,10 @@ class FrameHitTest
     bool releasePending_ = false;
 };
 
+//! False on SDL's Wayland driver when the compositor has no xdg-decoration: SDL's
+//! frame there is libdecor's, which draws nothing without a plugin installed.
+[[nodiscard]] bool serverDecorationsAvailable() noexcept;
+
 } // namespace wma::sdl
 
 #endif // WMA_SRC_BACKENDS_SDL_FRAME_HIT_TEST_HPP

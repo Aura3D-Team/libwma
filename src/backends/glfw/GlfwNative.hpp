@@ -16,6 +16,10 @@ namespace wma::glfw
 //! Hands the held button to the window manager to move (Caption) or resize (an edge).
 bool startMoveResize(GLFWwindow *window, WindowHit hit) noexcept;
 
+//! Before glfwInit(): where the compositor draws no frame, GLFW draws its own
+//! rather than libdecor's, which draws nothing without a plugin installed.
+void selectWaylandFrame() noexcept;
+
 } // namespace wma::glfw
 
 #endif // WMA_SRC_BACKENDS_GLFW_NATIVE_HPP

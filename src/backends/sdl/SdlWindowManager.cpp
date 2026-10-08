@@ -87,6 +87,9 @@ void SdlWindowManager::createWindow(const char *windowName)
         windowFlags |= SDL_WINDOW_RESIZABLE;
     if (windowDetails_.fullscreen)
         windowFlags |= SDL_WINDOW_FULLSCREEN;
+    //! The native Wayland backend draws its own frame there too.
+    if (windowDetails_.decorationMode == DecorationMode::ServerSide && !sdl::serverDecorationsAvailable())
+        windowDetails_.decorationMode = DecorationMode::ClientSide;
     if (windowDetails_.decorationMode == DecorationMode::ClientSide)
         windowFlags |= SDL_WINDOW_BORDERLESS;
 

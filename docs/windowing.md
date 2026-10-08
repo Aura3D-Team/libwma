@@ -92,7 +92,7 @@ half-pressed. Buttons drawn in the title bar must report `Client`.
 | Native X11 | EWMH `_NET_WM_MOVERESIZE` | Motif hints remove the frame |
 | SDL3 | `SDL_SetWindowHitTest` | `false` in the browser and on Android |
 | GLFW on X11 | EWMH through GLFW's native handles | GLFW 3.4 or newer |
-| GLFW elsewhere | `false` | `ClientSide` falls back to GLFW's own frame |
+| GLFW elsewhere | `false` | `ClientSide` falls back to GLFW's own frame; on Wayland without xdg-decoration that is GLFW's built-in frame, not libdecor's |
 
 | UI action | WMA call |
 |---|---|
@@ -108,7 +108,7 @@ is reported by the platform, so continue pumping events after requests.
 
 The Wayland compositor chooses the final decoration mode. Query
 `getDecorationMode()` after `createWindow()` and subsequent event dispatches;
-without xdg-decoration it is `ClientSide`. `restore()` unsets maximization;
+without xdg-decoration it is `ClientSide`, on native Wayland and SDL3 alike. `restore()` unsets maximization;
 Wayland provides no request to undo minimization. Custom Wayland surface roles
 reject toplevel controls, but `close()` still signals the local event loop.
 

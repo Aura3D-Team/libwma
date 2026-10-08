@@ -2,6 +2,13 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.5.1]
+
+### Fixed
+
+- SDL3 on a Wayland compositor without xdg-decoration (GNOME, Weston) falls back to `ClientSide`, as native Wayland does. SDL's frame there is libdecor's, which draws nothing without a plugin, so a `ServerSide` window had no frame and could not be moved.
+- GLFW on such a compositor draws its built-in frame instead of libdecor's, for the same reason. GLFW exposes no `xdg_toplevel`, so it cannot take an application-drawn title bar there.
+
 ## [0.5.0]
 
 ### Added

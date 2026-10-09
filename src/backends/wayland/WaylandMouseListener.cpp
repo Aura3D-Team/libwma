@@ -50,6 +50,10 @@ constexpr int kCursorSize = 24;
 namespace wma
 {
 
+//! axis_value120/axis_relative_direction are newer, optional wl_pointer events this
+//! listener has no use for; the designated initializer correctly leaves them null.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 const wl_pointer_listener WaylandMouseListener::pointerListener_ = {.enter = handleEnterCallback,
                                                                     .leave = handleLeaveCallback,
                                                                     .motion = handleMotionCallback,
@@ -59,6 +63,7 @@ const wl_pointer_listener WaylandMouseListener::pointerListener_ = {.enter = han
                                                                     .axis_source = handleAxisSourceCallback,
                                                                     .axis_stop = handleAxisStopCallback,
                                                                     .axis_discrete = handleAxisDiscreteCallback};
+#pragma GCC diagnostic pop
 
 WaylandMouseListener::WaylandMouseListener() : MouseListener(), pointer_(nullptr), cursorSurface_(nullptr)
 {

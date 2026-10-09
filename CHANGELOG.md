@@ -2,6 +2,18 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.5.2]
+
+### Fixed
+
+- Native Wayland's `GraphicsAPI::CPU` path had no pacing and no release tracking: an uncapped rasterizer could flood the compositor with commits, and resizing destroyed the displayed buffer on the spot, flickering on every drag event. Now double-buffered and `wl_surface.frame`-paced.
+- `WMA_ENABLE_SDL=ON` with `WMA_ENABLE_GLFW=ON` on Linux failed to link: both vendor their own copy of the same Wayland protocol tables, so an executable pulling in both static libraries hit a duplicate-symbol error. Now linked with `--allow-multiple-definition` in that case, since the two copies are identical.
+- Two harmless `-Wmissing-field-initializers` warnings (Debug builds): `wl_pointer_listener` and `xdg_toplevel_listener` gained newer, optional callbacks this library has no use for; the aggregate initializers correctly leave them null and now say so instead of warning.
+
+### Changed
+
+- `linux-debug`/`linux-release` presets build with `WMA_ENABLE_GLFW=ON`, matching Windows and macOS.
+
 ## [0.5.1]
 
 ### Fixed

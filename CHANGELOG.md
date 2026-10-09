@@ -2,6 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.5.4]
+
+### Fixed
+
+- `WindowBackend::GLFW` on Wayland decided whether to disable `GLFW_WAYLAND_LIBDECOR` by checking only whether the compositor *advertises* `zxdg_decoration_manager_v1`, not whether it actually negotiates server-side decoration for a real window. wlroots-based compositors (Hyprland among them) commonly advertise the protocol and still hand windows client-side decoration, so wma left libdecor enabled expecting the server to draw the frame — and libdecor, lacking an installed plugin, silently drew nothing. `selectWaylandFrame()` now also checks whether libdecor actually has a plugin to draw with (`WaylandDecorationProbe::libdecorHasPlugin()`, resolved via `$LIBDECOR_PLUGIN_DIR` or the directory libdecor was built to use) and disables libdecor whenever one isn't installed, falling back to GLFW's own built-in frame, which needs no plugin.
+
 ## [0.5.3]
 
 ### Fixed

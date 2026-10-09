@@ -92,7 +92,7 @@ half-pressed. Buttons drawn in the title bar must report `Client`.
 | Native X11 | EWMH `_NET_WM_MOVERESIZE` | Motif hints remove the frame |
 | SDL3 | `SDL_SetWindowHitTest` | `false` in the browser and on Android |
 | GLFW on X11 | EWMH through GLFW's native handles | GLFW 3.4 or newer; wma prefers X11 for exactly this reason -- see below |
-| GLFW elsewhere | `false` | `ClientSide` falls back to GLFW's own frame; on Wayland without xdg-decoration that is GLFW's built-in frame, not libdecor's |
+| GLFW elsewhere | `false` | `ClientSide` falls back to GLFW's own frame; on Wayland wma disables libdecor unless a plugin is actually installed, so GLFW draws its own frame rather than nothing |
 
 | UI action | WMA call |
 |---|---|

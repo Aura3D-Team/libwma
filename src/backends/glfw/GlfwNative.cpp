@@ -54,7 +54,11 @@ void selectWaylandFrame() noexcept
         return;
     const bool serverSide = wayland::offersServerDecorations(display);
     wl_display_disconnect(display);
-    if (!serverSide)
+    //! serverSide only means the protocol is advertised, not that this compositor's
+    //! negotiated mode for an actual window will end up server-drawn (wlroots
+    //! compositors commonly advertise it and still hand windows CSD). Whenever libdecor
+    //! would be the one drawing that CSD, it needs to actually have a plugin.
+    if (!serverSide || !wayland::libdecorHasPlugin())
         glfwInitHint(GLFW_WAYLAND_LIBDECOR, GLFW_WAYLAND_DISABLE_LIBDECOR);
 #endif
 }

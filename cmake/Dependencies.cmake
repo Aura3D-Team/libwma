@@ -171,6 +171,18 @@ if(WMA_ENABLE_WAYLAND)
         message(STATUS "[wma] EGL/wayland-egl not found — OpenGL on the Wayland backend is disabled.")
     endif()
 
+    # libdecor itself is GLFW's own runtime dlopen() dependency, not wma's -- this
+    # only resolves the directory its plugin would live in, so GlfwNative.cpp can
+    # tell "no plugin installed" (silently draws nothing) apart from "compositor
+    # draws the frame itself" (this hint is irrelevant either way).
+    if(WMA_ENABLE_GLFW)
+        pkg_check_modules(LIBDECOR QUIET libdecor-0)
+        if(LIBDECOR_FOUND)
+            pkg_get_variable(WMA_LIBDECOR_LIBDIR libdecor-0 libdir)
+            set(WMA_LIBDECOR_PLUGIN_DIR "${WMA_LIBDECOR_LIBDIR}/libdecor/plugins-1")
+        endif()
+    endif()
+
     find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
     pkg_get_variable(WAYLAND_PROTOCOLS_DATADIR wayland-protocols pkgdatadir)
 

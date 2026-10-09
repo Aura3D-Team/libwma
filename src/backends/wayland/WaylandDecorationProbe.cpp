@@ -1,7 +1,10 @@
 #include "backends/wayland/WaylandDecorationProbe.hpp"
 
+#include <cstdlib>
 #include <cstring>
+#include <string_view>
 
+#include <dirent.h>
 #include <wayland-client.h>
 
 #include <ink/ink_base.hpp>
@@ -38,6 +41,34 @@ bool offersServerDecorations(wl_display *display) noexcept
     wl_display_roundtrip_queue(display, queue);
     wl_registry_destroy(registry);
     wl_event_queue_destroy(queue);
+    return found;
+}
+
+bool libdecorHasPlugin() noexcept
+{
+    const char *dir = std::getenv("LIBDECOR_PLUGIN_DIR");
+#ifdef WMA_LIBDECOR_PLUGIN_DIR
+    if (!dir)
+        dir = WMA_LIBDECOR_PLUGIN_DIR;
+#endif
+    if (!dir)
+        return false;
+
+    DIR *handle = opendir(dir);
+    if (!handle)
+        return false;
+
+    bool found = false;
+    while (const dirent *entry = readdir(handle))
+    {
+        const std::string_view name(entry->d_name);
+        if (name.ends_with(".so"))
+        {
+            found = true;
+            break;
+        }
+    }
+    closedir(handle);
     return found;
 }
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 4.3.3)
 
 project(wma
-VERSION 0.5.3
+VERSION 0.5.4
 LANGUAGES C CXX
 )
 
@@ -255,6 +255,13 @@ if(WMA_ENABLE_WAYLAND)
     if(WMA_ENABLE_WAYLAND_GL)
         target_link_libraries(wma PRIVATE PkgConfig::WAYLAND_EGL)
         target_compile_definitions(wma PRIVATE WMA_WAYLAND_HAS_GL)
+    endif()
+
+    # See WMA_LIBDECOR_PLUGIN_DIR in cmake/Dependencies.cmake. GLFW-only: it feeds
+    # GlfwNative.cpp's decision about the GLFW_WAYLAND_LIBDECOR hint.
+    if(WMA_ENABLE_GLFW AND DEFINED WMA_LIBDECOR_PLUGIN_DIR)
+        target_compile_definitions(wma PRIVATE
+            WMA_LIBDECOR_PLUGIN_DIR="${WMA_LIBDECOR_PLUGIN_DIR}")
     endif()
 
     # Expose the build-time generated protocol headers to the compiler and

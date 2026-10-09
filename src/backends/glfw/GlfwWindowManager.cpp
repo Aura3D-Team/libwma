@@ -18,6 +18,7 @@
 #endif
 
 #include <atomic>
+#include <string>
 #include <utility>
 
 namespace wma
@@ -152,7 +153,10 @@ void GlfwWindowManager::createWindow(const char *windowName)
 
     if (!window_)
     {
-        throw WindowException("Failed to create GLFW window");
+        const char *description = nullptr;
+        glfwGetError(&description);
+        throw WindowException(std::string("Failed to create GLFW window: ") +
+                              (description ? description : "no further detail from GLFW"));
     }
 
     glfwSetWindowUserPointer(window_, userData_.get());
@@ -416,6 +420,13 @@ WmaCode GlfwWindowManager::destroy()
         window_ = nullptr;
     }
     maximized_ = false;
+    //! The listeners cache the same raw handle; their own destructors run after this
+    //! function returns, as GlfwWindowManager's automatic member teardown, which would
+    //! otherwise call GLFW functions on the now-destroyed window after glfwTerminate().
+    if (mouseListener_)
+        mouseListener_->detachWindow();
+    if (keyboardListener_)
+        keyboardListener_->detachWindow();
     if (ownsInit_)
     {
         ownsInit_ = false;
@@ -430,10 +441,13 @@ void GlfwWindowManager::initializeGLFW()
     if (g_glfwRefCount.fetch_add(1, std::memory_order_acq_rel) == 0)
     {
         glfw::selectWaylandFrame();
-        if (!glfwInit())
+        if (!glfw::initPreferringX11())
         {
             g_glfwRefCount.fetch_sub(1, std::memory_order_acq_rel);
-            throw WMAException("Failed to initialize GLFW");
+            const char *description = nullptr;
+            glfwGetError(&description);
+            throw WMAException(std::string("Failed to initialize GLFW: ") +
+                               (description ? description : "no further detail from GLFW"));
         }
     }
     ownsInit_ = true;

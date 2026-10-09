@@ -59,5 +59,18 @@ void selectWaylandFrame() noexcept
 #endif
 }
 
+bool initPreferringX11() noexcept
+{
+#ifdef WMA_GLFW_MOVE_RESIZE
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+    if (glfwInit())
+        return true;
+    //! X11 genuinely unavailable (or misconfigured): fall back rather than fail a
+    //! window manager that would otherwise have worked fine on Wayland.
+    glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
+#endif
+    return glfwInit();
+}
+
 } // namespace wma::glfw
 #endif // WMA_ENABLE_GLFW

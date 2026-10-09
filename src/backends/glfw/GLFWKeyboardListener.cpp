@@ -22,6 +22,11 @@ GLFWKeyboardListener::~GLFWKeyboardListener()
     }
 }
 
+void GLFWKeyboardListener::detachWindow() noexcept
+{
+    glfwWindow_ = nullptr;
+}
+
 void GLFWKeyboardListener::initialize(GLFWwindow *window)
 {
     if (!window)

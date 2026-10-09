@@ -20,6 +20,13 @@ bool startMoveResize(GLFWwindow *window, WindowHit hit) noexcept;
 //! rather than libdecor's, which draws nothing without a plugin installed.
 void selectWaylandFrame() noexcept;
 
+//! glfwInit(), preferring X11 when compiled in: GLFW's own default auto-selection
+//! can pick Wayland even on a system where X11 works fine, and wma's GLFW backend
+//! only has native move/resize (hence ClientSide decoration) on X11 -- see
+//! supportsMoveResize(). Falls back to GLFW's normal auto-selection if X11 is not
+//! actually available, so a Wayland-only system is unaffected.
+[[nodiscard]] bool initPreferringX11() noexcept;
+
 } // namespace wma::glfw
 
 #endif // WMA_SRC_BACKENDS_GLFW_NATIVE_HPP

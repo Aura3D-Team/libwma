@@ -16,6 +16,8 @@ class GLFWKeyboardListener : public KeyboardListener
 
     void initialize(GLFWwindow *window);
     void handleKeyEvent(i32 key, i32 action);
+    //! See GLFWMouseListener::detachWindow().
+    void detachWindow() noexcept;
 
     //! GLFW hands over an already-decoded Unicode scalar value, so unlike the
     //! other three backends this one needs no UTF-8 decoding step.

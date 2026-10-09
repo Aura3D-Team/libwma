@@ -91,7 +91,7 @@ half-pressed. Buttons drawn in the title bar must report `Client`.
 | Native Wayland | `xdg_toplevel.move/resize` with the press serial | |
 | Native X11 | EWMH `_NET_WM_MOVERESIZE` | Motif hints remove the frame |
 | SDL3 | `SDL_SetWindowHitTest` | `false` in the browser and on Android |
-| GLFW on X11 | EWMH through GLFW's native handles | GLFW 3.4 or newer |
+| GLFW on X11 | EWMH through GLFW's native handles | GLFW 3.4 or newer; wma prefers X11 for exactly this reason -- see below |
 | GLFW elsewhere | `false` | `ClientSide` falls back to GLFW's own frame; on Wayland without xdg-decoration that is GLFW's built-in frame, not libdecor's |
 
 | UI action | WMA call |
@@ -112,13 +112,20 @@ without xdg-decoration it is `ClientSide`, on native Wayland and SDL3 alike. `re
 Wayland provides no request to undo minimization. Custom Wayland surface roles
 reject toplevel controls, but `close()` still signals the local event loop.
 
+GLFW's own platform auto-selection can silently pick Wayland even on a system
+where X11 works fine, which loses ClientSide decoration (GLFW has no
+`xdg_toplevel` access at all) and, on some driver/compositor combinations, GL
+context creation itself. `WindowBackend::GLFW` asks for X11 first, falling back
+to GLFW's normal auto-selection only if X11 is genuinely unavailable.
+
 ## Backends and graphics APIs
 
-Two independent axes.
+Two mostly-independent axes.
 
 | `WindowBackend` | `GraphicsAPI` |
 |---|---|
-| `GLFW` `SDL3` `X11` `WAYLAND` | `OpenGL` `Vulkan` `CPU` `Metal` |
+| `SDL3` `X11` `WAYLAND` | `OpenGL` `Vulkan` `CPU` `Metal` (platform-dependent) |
+| `GLFW` | `OpenGL` `Vulkan` `Metal` -- **no `CPU`**, GLFW has no software-blit path |
 
 ```cpp
 if (wma::isBackendAvailable(wma::WindowBackend::WAYLAND)) { ... }

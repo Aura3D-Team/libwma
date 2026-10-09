@@ -2,6 +2,15 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.5.3]
+
+### Fixed
+
+- `WindowBackend::GLFW` now asks for the X11 platform before `glfwInit()`, falling back to GLFW's own auto-selection only if X11 is genuinely unavailable. GLFW's default auto-selection can silently pick Wayland even on a system where X11 works fine, and wma's GLFW backend only has native move/resize (so `ClientSide` decoration, `setHitTest()`) on X11; on at least one driver/compositor combination GLFW's Wayland EGL path also failed outright where X11/GLX worked. Previously-reported "GLFW has no window decoration" and "GLFW doesn't work with OpenGL" were both this.
+- `GlfwWindowManager` swallowed GLFW's own error description on failure, down to a generic "Failed to create GLFW window" with no reason. Both `glfwInit()` and `glfwCreateWindow()` failures now include GLFW's actual message via `glfwGetError()`.
+- `GLFWMouseListener`/`GLFWKeyboardListener` cached their own copy of the raw `GLFWwindow*`; on window destruction their own destructors ran *after* `GlfwWindowManager::destroy()` had already called `glfwTerminate()`, each calling GLFW functions on a dangling handle post-termination (five harmless-but-spurious "GLFW library is not initialized" errors on every shutdown). The window manager now clears both listeners' cached handles before terminating.
+- `docs/windowing.md`'s window-backend/graphics-API table claimed all four backends support all four graphics APIs; `GraphicsAPI::CPU` has always thrown on GLFW (no software-blit path). Corrected.
+
 ## [0.5.2]
 
 ### Fixed

@@ -52,6 +52,11 @@ GLFWMouseListener::~GLFWMouseListener()
     }
 }
 
+void GLFWMouseListener::detachWindow() noexcept
+{
+    glfwWindow_ = nullptr;
+}
+
 void GLFWMouseListener::initialize(GLFWwindow *window)
 {
     if (!window)

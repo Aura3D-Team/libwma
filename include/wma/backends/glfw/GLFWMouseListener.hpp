@@ -20,6 +20,10 @@ class GLFWMouseListener : public MouseListener
     void initialize(GLFWwindow *window);
     //! glfwTerminate() frees every cursor, so the window manager calls this first.
     void releaseCursors() noexcept;
+    //! Clears the cached handle without touching GLFW: by the time the window manager
+    //! calls this the window is already destroyed, and the destructor's own callback
+    //! unregistration would otherwise run after glfwTerminate().
+    void detachWindow() noexcept;
 
     static void glfwMouseButtonCallback(GLFWwindow *window, i32 button, i32 action, i32 mods);
     static void glfwCursorPosCallback(GLFWwindow *window, f64 xpos, f64 ypos);

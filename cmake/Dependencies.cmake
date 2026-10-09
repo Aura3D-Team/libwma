@@ -118,14 +118,18 @@ endif()
 
 # Static SDL3 and static GLFW both compile in the Wayland protocol tables
 # (wp_fractional_scale_manager_v1_interface, ...), so an executable that pulls in
-# both fails to link with duplicate symbols. Nothing here can rename them.
+# both fails to link with duplicate symbols. The two are wayland-scanner output
+# for the same protocol version and so identical in practice -- WMA_NEEDS_MULTIDEF_FIX
+# tells CMakeLists.txt (where SDL3/glfw are actually linked to the wma target) to
+# let the linker pick either copy instead of failing.
+set(WMA_NEEDS_MULTIDEF_FIX FALSE)
 if(WMA_ENABLE_SDL AND WMA_ENABLE_GLFW AND NOT TARGET SDL3::SDL3-shared AND TARGET glfw)
     get_target_property(_wma_glfw_type glfw TYPE)
     if(_wma_glfw_type STREQUAL "STATIC_LIBRARY" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        message(WARNING
-            "[wma] SDL3 and GLFW are both static: executables using both backends fail to link "
-            "with duplicate wp_*_interface symbols. Install one of them shared, or build GLFW "
-            "with -DGLFW_BUILD_WAYLAND=OFF.")
+        set(WMA_NEEDS_MULTIDEF_FIX TRUE)
+        message(STATUS
+            "[wma] SDL3 and GLFW are both static: allowing the linker to pick either copy of "
+            "the duplicate wp_*_interface Wayland protocol tables they both embed.")
     endif()
     unset(_wma_glfw_type)
 endif()

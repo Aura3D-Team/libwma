@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 4.3.3)
 
 project(wma
-VERSION 0.5.1
+VERSION 0.5.2
 LANGUAGES C CXX
 )
 
@@ -217,6 +217,13 @@ endif()
 if(WMA_ENABLE_GLFW)
     target_compile_definitions(wma PRIVATE WMA_ENABLE_GLFW)
     target_link_libraries(wma PRIVATE glfw)
+endif()
+
+# See WMA_NEEDS_MULTIDEF_FIX in cmake/Dependencies.cmake. PUBLIC: this has to reach
+# the final link of whatever executable consumes wma, the same as the Metal
+# frameworks above.
+if(WMA_NEEDS_MULTIDEF_FIX)
+    target_link_options(wma PUBLIC "-Wl,--allow-multiple-definition")
 endif()
 
 if(WMA_ENABLE_ALSA)

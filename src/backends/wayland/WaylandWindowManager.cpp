@@ -49,21 +49,29 @@ const xdg_wm_base_listener WaylandWindowManager::xdgWmBaseListener_ = {handleXdg
 
 const xdg_surface_listener WaylandWindowManager::xdgSurfaceListener_ = {handleXdgSurfaceConfigure};
 
+//! wm_capabilities is a newer, optional xdg_toplevel event this listener has no use
+//! for; the trailing-positional initializer correctly leaves it null.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 const xdg_toplevel_listener WaylandWindowManager::xdgToplevelListener_ = {
     handleXdgToplevelConfigure, handleXdgToplevelClose, handleXdgToplevelConfigureBounds};
+#pragma GCC diagnostic pop
 
 const zxdg_toplevel_decoration_v1_listener WaylandWindowManager::xdgToplevelDecorationListener_ = {
     handleXdgToplevelDecorationConfigure};
+
+const wl_buffer_listener WaylandWindowManager::bufferListener_ = {handleBufferRelease};
+
+const wl_callback_listener WaylandWindowManager::frameCallbackListener_ = {handleFrameDone};
 
 WaylandWindowManager::WaylandWindowManager(const WindowDetails &windowDetails, GraphicsAPI graphicsAPI,
                                            std::unique_ptr<WaylandSurfaceRole> role)
     : role_(std::move(role)), display_(nullptr), registry_(nullptr), compositor_(nullptr), surface_(nullptr),
       seat_(nullptr), shm_(nullptr), xdgWmBase_(nullptr), xdgSurface_(nullptr), xdgToplevel_(nullptr),
       xdgDecorationManager_(nullptr), xdgToplevelDecoration_(nullptr), keyboard_(nullptr), pointer_(nullptr),
-      shmBuffer_(nullptr), shmData_(nullptr), shmSize_(0), shmWidth_(0), shmHeight_(0), eglWindow_(nullptr),
-      eglDisplay_(nullptr), eglContext_(nullptr), eglSurface_(nullptr), windowDetails_(windowDetails), windowFlags_{},
-      graphicsAPI_(graphicsAPI), windowShouldClose_(false), configured_(false), floatingWidth_(windowDetails.width),
-      floatingHeight_(windowDetails.height),
+      eglWindow_(nullptr), eglDisplay_(nullptr), eglContext_(nullptr), eglSurface_(nullptr),
+      windowDetails_(windowDetails), windowFlags_{}, graphicsAPI_(graphicsAPI), windowShouldClose_(false),
+      configured_(false), floatingWidth_(windowDetails.width), floatingHeight_(windowDetails.height),
       keyboardListener_(std::make_unique<WaylandKeyboardListener>(&windowFlags_)),
       mouseListener_(std::make_unique<WaylandMouseListener>())
 {
@@ -85,8 +93,9 @@ WaylandWindowManager::WaylandWindowManager(WaylandWindowManager &&other) noexcep
       xdgDecorationManager_(std::exchange(other.xdgDecorationManager_, nullptr)),
       xdgToplevelDecoration_(std::exchange(other.xdgToplevelDecoration_, nullptr)),
       keyboard_(std::exchange(other.keyboard_, nullptr)), pointer_(std::exchange(other.pointer_, nullptr)),
-      shmBuffer_(std::exchange(other.shmBuffer_, nullptr)), shmData_(std::exchange(other.shmData_, nullptr)),
-      shmSize_(other.shmSize_), shmWidth_(other.shmWidth_), shmHeight_(other.shmHeight_),
+      shmPool_(std::move(other.shmPool_)), retiringPool_(std::move(other.retiringPool_)),
+      lockedSlot_(std::exchange(other.lockedSlot_, nullptr)),
+      frameCallback_(std::exchange(other.frameCallback_, nullptr)),
       eglWindow_(std::exchange(other.eglWindow_, nullptr)), eglDisplay_(std::exchange(other.eglDisplay_, nullptr)),
       eglContext_(std::exchange(other.eglContext_, nullptr)), eglSurface_(std::exchange(other.eglSurface_, nullptr)),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
@@ -125,11 +134,10 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         xdgToplevelDecoration_ = std::exchange(other.xdgToplevelDecoration_, nullptr);
         keyboard_ = std::exchange(other.keyboard_, nullptr);
         pointer_ = std::exchange(other.pointer_, nullptr);
-        shmBuffer_ = std::exchange(other.shmBuffer_, nullptr);
-        shmData_ = std::exchange(other.shmData_, nullptr);
-        shmSize_ = other.shmSize_;
-        shmWidth_ = other.shmWidth_;
-        shmHeight_ = other.shmHeight_;
+        shmPool_ = std::move(other.shmPool_);
+        retiringPool_ = std::move(other.retiringPool_);
+        lockedSlot_ = std::exchange(other.lockedSlot_, nullptr);
+        frameCallback_ = std::exchange(other.frameCallback_, nullptr);
         eglWindow_ = std::exchange(other.eglWindow_, nullptr);
         eglDisplay_ = std::exchange(other.eglDisplay_, nullptr);
         eglContext_ = std::exchange(other.eglContext_, nullptr);
@@ -177,6 +185,9 @@ void WaylandWindowManager::rebindListeners() noexcept
     rebind(xdgSurface_);
     rebind(xdgToplevel_);
     rebind(xdgToplevelDecoration_);
+    rebind(frameCallback_);
+    //! Buffer listeners point at their own ShmBuffer, not at `this`: the heap-allocated
+    //! ShmPool that owns them doesn't move when the unique_ptr holding it does.
 }
 
 void WaylandWindowManager::createWindow(const char *windowName)
@@ -337,53 +348,86 @@ void WaylandWindowManager::initEGL()
 #endif
 }
 
+WaylandWindowManager::ShmPool::~ShmPool()
+{
+    for (ShmBuffer &slot : buffers)
+        if (slot.buffer)
+            wl_buffer_destroy(slot.buffer);
+    if (mapped)
+        munmap(mapped, static_cast<usize>(mappedSize));
+}
+
 void WaylandWindowManager::allocateShmBuffer(i32 width, i32 height)
 {
-    destroyShmBuffer();
+    //! The old pool, not destroyed here: any of its slots can still be what the
+    //! compositor is displaying. See releaseRetiringPoolIfIdle() for when it is freed.
+    retiringPool_ = std::move(shmPool_);
+    lockedSlot_ = nullptr;
     if (!shm_ || width <= 0 || height <= 0)
         return;
 
     const i32 stride = width * 4;
-    const i32 size = stride * height;
+    const i32 bufferBytes = stride * height;
+    const i32 totalBytes = bufferBytes * kShmBufferCount;
 
-    int fd = createAnonymousFile(size);
+    int fd = createAnonymousFile(totalBytes);
     if (fd < 0)
         throw WMAException("Failed to create Wayland shm file");
 
-    void *data = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (data == MAP_FAILED)
+    void *mapped = mmap(nullptr, static_cast<usize>(totalBytes), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (mapped == MAP_FAILED)
     {
         ::close(fd);
         throw WMAException("Failed to mmap Wayland shm buffer");
     }
+    std::memset(mapped, 0, static_cast<usize>(totalBytes));
 
-    wl_shm_pool *pool = wl_shm_create_pool(shm_, fd, size);
-    shmBuffer_ = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
-    wl_shm_pool_destroy(pool);
+    wl_shm_pool *pool = wl_shm_create_pool(shm_, fd, totalBytes);
     ::close(fd);
 
-    std::memset(data, 0, static_cast<usize>(size));
-    shmData_ = data;
-    shmSize_ = size;
-    shmWidth_ = width;
-    shmHeight_ = height;
+    auto newPool = std::make_unique<ShmPool>();
+    newPool->mapped = mapped;
+    newPool->mappedSize = totalBytes;
+    newPool->width = width;
+    newPool->height = height;
+    newPool->stride = stride;
+    for (i32 i = 0; i < kShmBufferCount; ++i)
+    {
+        ShmBuffer &slot = newPool->buffers[static_cast<usize>(i)];
+        slot.data = static_cast<u8 *>(mapped) + static_cast<usize>(bufferBytes) * static_cast<usize>(i);
+        slot.buffer = wl_shm_pool_create_buffer(pool, bufferBytes * i, width, height, stride, WL_SHM_FORMAT_XRGB8888);
+        wl_buffer_add_listener(slot.buffer, &bufferListener_, &slot);
+    }
+    wl_shm_pool_destroy(pool);
+
+    shmPool_ = std::move(newPool);
 }
 
-void WaylandWindowManager::destroyShmBuffer()
+void WaylandWindowManager::releaseRetiringPoolIfIdle() noexcept
 {
-    if (shmBuffer_)
-    {
-        wl_buffer_destroy(shmBuffer_);
-        shmBuffer_ = nullptr;
-    }
-    if (shmData_)
-    {
-        munmap(shmData_, static_cast<usize>(shmSize_));
-        shmData_ = nullptr;
-    }
-    shmSize_ = 0;
-    shmWidth_ = 0;
-    shmHeight_ = 0;
+    if (!retiringPool_)
+        return;
+    const bool stillBusy = std::ranges::any_of(retiringPool_->buffers,
+                                               [](const ShmBuffer &slot)
+                                               {
+                                                   return slot.busy;
+                                               });
+    if (!stillBusy)
+        retiringPool_.reset();
+}
+
+void WaylandWindowManager::handleBufferRelease(void *data, wl_buffer *)
+{
+    static_cast<ShmBuffer *>(data)->busy = false;
+}
+
+void WaylandWindowManager::handleFrameDone(void *data, wl_callback *callback, u32)
+{
+    auto *manager = static_cast<WaylandWindowManager *>(data);
+    wl_callback_destroy(callback);
+    //! Only clear our own pointer: destroy() or a later present may already have.
+    if (manager->frameCallback_ == callback)
+        manager->frameCallback_ = nullptr;
 }
 
 void WaylandWindowManager::pollEvents()
@@ -502,19 +546,38 @@ FramebufferSize WaylandWindowManager::getFramebufferSize() noexcept
 
 SoftwareFramebuffer WaylandWindowManager::lockFramebuffer()
 {
-    if (graphicsAPI_ != GraphicsAPI::CPU || !shmData_)
+    releaseRetiringPoolIfIdle();
+    //! Two independent reasons to refuse a frame: frameCallback_ paces rate (no point
+    //! rasterising faster than the compositor displays), slot busy-tracking is what
+    //! keeps a write from ever landing in memory the compositor may still be reading.
+    //! Vulkan gets both from its swapchain, OpenGL the first from eglSwapInterval; raw
+    //! wl_shm has neither built in. Either drop falls through the same path
+    //! IRenderer::needsFrame() already covers.
+    if (graphicsAPI_ != GraphicsAPI::CPU || !shmPool_ || frameCallback_)
         return {};
-    return SoftwareFramebuffer{shmData_, shmWidth_, shmHeight_, shmWidth_ * 4};
+    for (ShmBuffer &slot : shmPool_->buffers)
+    {
+        if (!slot.busy)
+        {
+            lockedSlot_ = &slot;
+            return SoftwareFramebuffer{slot.data, shmPool_->width, shmPool_->height, shmPool_->stride};
+        }
+    }
+    return {};
 }
 
 void WaylandWindowManager::presentFramebuffer()
 {
-    if (graphicsAPI_ != GraphicsAPI::CPU || !shmBuffer_ || !surface_)
+    if (graphicsAPI_ != GraphicsAPI::CPU || !lockedSlot_ || !surface_)
         return;
-    wl_surface_attach(surface_, shmBuffer_, 0, 0);
-    wl_surface_damage(surface_, 0, 0, shmWidth_, shmHeight_);
+    lockedSlot_->busy = true;
+    wl_surface_attach(surface_, lockedSlot_->buffer, 0, 0);
+    wl_surface_damage(surface_, 0, 0, shmPool_->width, shmPool_->height);
+    frameCallback_ = wl_surface_frame(surface_);
+    wl_callback_add_listener(frameCallback_, &frameCallbackListener_, this);
     wl_surface_commit(surface_);
     wl_display_flush(display_);
+    lockedSlot_ = nullptr;
 }
 
 const std::vector<const char *> WaylandWindowManager::getVulkanExtensions() const
@@ -729,7 +792,14 @@ WmaCode WaylandWindowManager::destroy()
     }
 #endif
 
-    destroyShmBuffer();
+    if (frameCallback_)
+    {
+        wl_callback_destroy(frameCallback_);
+        frameCallback_ = nullptr;
+    }
+    lockedSlot_ = nullptr;
+    retiringPool_.reset();
+    shmPool_.reset();
 
     if (keyboard_)
     {

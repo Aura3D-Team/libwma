@@ -8,6 +8,7 @@
 #include "wma/backends/wayland/protocols/xdg-decoration-unstable-v1-client-protocol.h"
 #include "wma/backends/wayland/protocols/xdg-shell-client-protocol.h"
 #include "wma/managers/IWindowManager.hpp"
+#include <array>
 #include <memory>
 #include <wayland-client.h>
 
@@ -106,12 +107,49 @@ class WaylandWindowManager : public IWindowManager
     wl_keyboard *keyboard_;
     wl_pointer *pointer_;
 
-    //! Software rendering (GraphicsAPI::CPU) via wl_shm.
-    wl_buffer *shmBuffer_;
-    void *shmData_;
-    i32 shmSize_;
-    i32 shmWidth_;
-    i32 shmHeight_;
+    //! Software rendering (GraphicsAPI::CPU) via wl_shm, double-buffered: writing into
+    //! one slot while the compositor may still be reading the other is what a single
+    //! reused buffer cannot do safely, and is also the backpressure that keeps a fast
+    //! rasterizer from outrunning the compositor -- lockFramebuffer() simply has no free
+    //! slot to hand out once both are in flight. Vulkan gets the same thing from its
+    //! swapchain, OpenGL from eglSwapInterval; raw wl_shm has nothing built in.
+    static constexpr i32 kShmBufferCount = 2;
+
+    struct ShmBuffer
+    {
+        wl_buffer *buffer = nullptr;
+        void *data = nullptr;
+        //! Set on commit, cleared by wl_buffer.release: true while the compositor may
+        //! still be reading this slot's memory.
+        bool busy = false;
+    };
+
+    //! One memfd/mmap split into kShmBufferCount slots. A resize retires the whole pool
+    //! (see retiringPool_) rather than tearing it down in place, since any of its slots
+    //! can still be the surface's displayed content.
+    struct ShmPool
+    {
+        ~ShmPool();
+        void *mapped = nullptr;
+        i32 mappedSize = 0;
+        i32 width = 0;
+        i32 height = 0;
+        i32 stride = 0;
+        std::array<ShmBuffer, kShmBufferCount> buffers;
+    };
+
+    std::unique_ptr<ShmPool> shmPool_;
+    //! The pool a resize just replaced. Freed once every one of its slots reports
+    //! released, checked opportunistically in lockFramebuffer().
+    std::unique_ptr<ShmPool> retiringPool_;
+    //! The slot lockFramebuffer() last handed out, pending the matching presentFramebuffer().
+    ShmBuffer *lockedSlot_ = nullptr;
+    //! A second, orthogonal gate on lockFramebuffer(): slot availability alone only
+    //! keeps writes safe, it does not stop the rasterizer from producing far more
+    //! frames than the compositor ever displays (measured ~20x at a 60 Hz output with
+    //! two reused buffers and no pacing). Non-null while the last commit is
+    //! unacknowledged.
+    wl_callback *frameCallback_ = nullptr;
 
     //! OpenGL via EGL (opaque so this header needs no EGL includes).
     void *eglWindow_;  //!< wl_egl_window*
@@ -164,10 +202,17 @@ class WaylandWindowManager : public IWindowManager
     static const zxdg_toplevel_decoration_v1_listener xdgToplevelDecorationListener_;
     static void handleXdgToplevelDecorationConfigure(void *data, zxdg_toplevel_decoration_v1 *decoration, u32 mode);
 
+    static const wl_buffer_listener bufferListener_;
+    static void handleBufferRelease(void *data, wl_buffer *buffer);
+
+    static const wl_callback_listener frameCallbackListener_;
+    static void handleFrameDone(void *data, wl_callback *callback, u32 time);
+
     void setupInputDevices();
     void initEGL();
     void allocateShmBuffer(i32 width, i32 height);
-    void destroyShmBuffer();
+    //! Frees retiringPool_ once none of its slots are still with the compositor.
+    void releaseRetiringPoolIfIdle() noexcept;
 };
 
 } // namespace wma

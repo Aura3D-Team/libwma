@@ -22,6 +22,7 @@
         "CMAKE_PREFIX_PATH": "$env{LOCAL_PREFIX}",
         "WMA_BUILD_EXAMPLES": "ON",
         "WMA_ENABLE_SDL": "ON",
+        "WMA_ENABLE_GLFW": "ON",
         "WMA_ENABLE_X11": "ON",
         "WMA_ENABLE_WAYLAND": "ON",
         "WMA_ENABLE_ALSA": "ON"
@@ -37,6 +38,7 @@
         "CMAKE_PREFIX_PATH": "$env{LOCAL_PREFIX}",
         "WMA_BUILD_EXAMPLES": "ON",
         "WMA_ENABLE_SDL": "ON",
+        "WMA_ENABLE_GLFW": "ON",
         "WMA_ENABLE_X11": "ON",
         "WMA_ENABLE_WAYLAND": "ON",
         "WMA_ENABLE_ALSA": "ON"

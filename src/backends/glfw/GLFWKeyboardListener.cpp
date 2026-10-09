@@ -60,7 +60,7 @@ void GLFWKeyboardListener::handleCharEvent(u32 codepoint)
     dispatchText(static_cast<Codepoint>(codepoint));
 }
 
-void GLFWKeyboardListener::glfwKeyCallback(GLFWwindow *window, i32 key, i32 scancode, i32 action, i32 mods)
+void GLFWKeyboardListener::glfwKeyCallback(GLFWwindow *window, i32 key, i32 /*scancode*/, i32 action, i32 /*mods*/)
 {
     auto *listener = getInstanceFromWindow(window);
     if (listener)

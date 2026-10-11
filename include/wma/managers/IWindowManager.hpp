@@ -264,6 +264,23 @@ class IWindowManager
         };
     }
 
+    /**
+     * @brief How much larger than one pixel per unit the platform wants UI drawn.
+     *
+     * The display's own scale setting: 2.625 on an Android phone, 1.5 on a Windows
+     * display set to 150%. It is what getFramebufferSize() leaves out. That one is
+     * the backing-store ratio (a Retina window is twice as many pixels as points);
+     * this is the part left over, and the two multiply. A window that is 1080 px wide
+     * with a content scale of 2.625 is 411 units of UI wide.
+     *
+     * 1 where the backend has no such setting (native X11 and Wayland, WASM).
+     * Query it every frame: moving the window to another display changes it.
+     */
+    [[nodiscard]] virtual f32 getContentScale() noexcept
+    {
+        return 1.0f;
+    }
+
     virtual WindowFlags *getWindowFlags() noexcept = 0;
     virtual const WindowDetails *getWindowDetails() noexcept = 0;
     virtual const std::vector<const char *> getVulkanExtensions() const = 0;

@@ -2,6 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.6.0]
+
+### Added
+
+- `IWindowManager::getContentScale()`: the display's own scale setting, which `getFramebufferSize()` leaves out. On Android the surface is as many pixels as the window, so a 2.625x phone looked 1x to a consumer comparing the two sizes. The SDL3 backend returns SDL's display scale divided by the pixel density; GLFW returns its content scale divided by the framebuffer ratio, so macOS does not count Retina twice. 1 on native X11, native Wayland and WASM.
+
 ## [0.5.5]
 
 ### Fixed

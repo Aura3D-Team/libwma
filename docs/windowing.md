@@ -144,6 +144,24 @@ window->getWindowInstance();        // SDL_Window* / GLFWwindow* / X11 Window / 
 window->getNativeDisplayHandle();   // X11/Wayland only, else nullptr
 ```
 
+## Size, pixels and scale
+
+```cpp
+const wma::WindowDetails* logical = window->getWindowDetails();   // window units: what input is reported in
+const wma::FramebufferSize pixels = window->getFramebufferSize(); // what a swapchain is sized from
+const f32 scale = window->getContentScale();                      // the display's scale setting
+```
+
+| Platform | `pixels / logical` | `getContentScale()` |
+|---|---|---|
+| macOS (SDL3, GLFW) | 2 on Retina | 1 |
+| Windows at 150% (SDL3, GLFW) | 1 | 1.5 |
+| Android (SDL3) | 1 | The display density, e.g. 2.625 |
+| Native X11, native Wayland, WASM | The buffer scale | 1 |
+
+UI that should look the same size on every display is `logical / getContentScale()` units wide, drawn
+`pixels / logical * getContentScale()` pixels to the unit.
+
 ## Software rendering
 
 With `GraphicsAPI::CPU`:

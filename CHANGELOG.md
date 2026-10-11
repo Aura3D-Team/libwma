@@ -2,6 +2,13 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.5.5]
+
+### Fixed
+
+- `WindowBackend::X11` flickered black while resizing, with OpenGL and CPU. The window kept the default `ForgetGravity`, so a compositor dropped its contents on every resize step, and OpenGL windows also had a black background pixel the server painted over them before the next frame. Windows now use `NorthWestGravity` and no background.
+- `WindowBackend::X11` with `GraphicsAPI::CPU` had no pacing: every frame was copied through the X socket with `XPutImage` and nothing waited for the server, so an uncapped rasterizer could flood it and resizing reallocated the image on every `ConfigureNotify`. It now presents through two MIT-SHM slots like the Wayland backend's `wl_shm` pool: `lockFramebuffer()` returns an invalid framebuffer while both are still being read, and the server's completion event frees one. Falls back to `XPutImage` when the server cannot attach a segment (remote display, separate IPC namespace). Needs libXext.
+
 ## [0.5.4]
 
 ### Fixed

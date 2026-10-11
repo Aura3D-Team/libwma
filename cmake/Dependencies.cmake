@@ -146,6 +146,10 @@ set(WMA_ENABLE_WAYLAND_GL FALSE)
 
 if(WMA_ENABLE_X11)
     find_package(X11 REQUIRED)
+    # MIT-SHM, which the CPU path presents through.
+    if(NOT TARGET X11::Xext)
+        message(FATAL_ERROR "[wma] libXext not found — the X11 backend needs it for MIT-SHM.")
+    endif()
     # Optional: GLX for OpenGL-on-X11. Provides the imported target OpenGL::GLX.
     find_package(OpenGL COMPONENTS OpenGL GLX)
     if(TARGET OpenGL::GLX)

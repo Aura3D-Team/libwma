@@ -11,6 +11,8 @@
 #include <memory>
 #include <poll.h>
 #include <span>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <utility>
 
 //! For XkbSetDetectableAutoRepeat; see createWindow().
@@ -24,9 +26,23 @@
 namespace wma
 {
 
+namespace
+{
+
+//! Xlib has one process-wide error handler; this is installed only around the attach round trip.
+bool shmAttachFailed = false;
+
+int onShmAttachError(Display *, XErrorEvent *)
+{
+    shmAttachFailed = true;
+    return 0;
+}
+
+} // namespace
+
 X11WindowManager::X11WindowManager(const WindowDetails &windowDetails, GraphicsAPI graphicsAPI)
-    : display_(nullptr), window_(0), colormap_(0), wmDeleteWindow_(0), gc_(nullptr), image_(nullptr),
-      glContext_(nullptr), fbConfig_(nullptr), windowDetails_(windowDetails), windowFlags_{}, graphicsAPI_(graphicsAPI),
+    : display_(nullptr), window_(0), colormap_(0), wmDeleteWindow_(0), gc_(nullptr), glContext_(nullptr),
+      fbConfig_(nullptr), windowDetails_(windowDetails), windowFlags_{}, graphicsAPI_(graphicsAPI),
       keyboardListener_(std::make_unique<X11KeyboardListener>()), mouseListener_(std::make_unique<X11MouseListener>()),
       windowShouldClose_(false)
 {
@@ -44,7 +60,8 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
       netWmState_(other.netWmState_), netWmStateMaximizedVert_(other.netWmStateMaximizedVert_),
       netWmStateMaximizedHorz_(other.netWmStateMaximizedHorz_), netWmName_(other.netWmName_),
       utf8String_(other.utf8String_), maximized_(std::exchange(other.maximized_, false)),
-      gc_(std::exchange(other.gc_, nullptr)), image_(std::exchange(other.image_, nullptr)),
+      gc_(std::exchange(other.gc_, nullptr)), slots_(std::exchange(other.slots_, {})),
+      shmCompletion_(other.shmCompletion_), shmRejected_(other.shmRejected_),
       glContext_(std::exchange(other.glContext_, nullptr)), fbConfig_(other.fbConfig_),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
@@ -71,7 +88,9 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         utf8String_ = other.utf8String_;
         maximized_ = std::exchange(other.maximized_, false);
         gc_ = std::exchange(other.gc_, nullptr);
-        image_ = std::exchange(other.image_, nullptr);
+        slots_ = std::exchange(other.slots_, {});
+        shmCompletion_ = other.shmCompletion_;
+        shmRejected_ = other.shmRejected_;
         glContext_ = std::exchange(other.glContext_, nullptr);
         fbConfig_ = other.fbConfig_;
         windowDetails_ = other.windowDetails_;
@@ -176,13 +195,15 @@ void X11WindowManager::createWindow(const char *windowName)
     //! otherwise stay down forever. PropertyChangeMask tracks _NET_WM_STATE.
     windowAttributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask |
                                   PointerMotionMask | StructureNotifyMask | FocusChangeMask | PropertyChangeMask;
-    unsigned long valueMask = CWEventMask;
+    //! A compositor discards a resized window's contents under the default ForgetGravity, which
+    //! shows as a black flash until the next frame lands; keep them until it does.
+    windowAttributes.bit_gravity = NorthWestGravity;
+    unsigned long valueMask = CWEventMask | CWBitGravity;
     if (colormap_)
     {
         windowAttributes.colormap = colormap_;
-        windowAttributes.background_pixel = 0;
         windowAttributes.border_pixel = 0;
-        valueMask |= CWColormap | CWBackPixel | CWBorderPixel;
+        valueMask |= CWColormap | CWBorderPixel;
     }
 
     window_ = XCreateWindow(display_, rootWindow, 100, 100, windowDetails_.width, windowDetails_.height, 0, depth,
@@ -248,7 +269,8 @@ void X11WindowManager::createWindow(const char *windowName)
     else if (graphicsAPI_ == GraphicsAPI::CPU)
     {
         gc_ = XCreateGC(display_, window_, 0, nullptr);
-        allocateSoftwareImage(windowDetails_.width, windowDetails_.height);
+        if (XShmQueryExtension(display_))
+            shmCompletion_ = XShmGetEventBase(display_) + ShmCompletion;
     }
 }
 
@@ -414,38 +436,81 @@ void X11WindowManager::initGL()
 #endif
 }
 
-void X11WindowManager::allocateSoftwareImage(i32 width, i32 height)
+void X11WindowManager::createSlot(Slot &slot, i32 width, i32 height)
 {
-    destroySoftwareImage();
-    if (width <= 0 || height <= 0)
+    if (shmCompletion_ >= 0 && !shmRejected_ && createShmImage(slot, width, height))
         return;
 
     const int screen = DefaultScreen(display_);
-    Visual *visual = DefaultVisual(display_, screen);
-    const int depth = DefaultDepth(display_, screen);
 
     //! 32-bit ZPixmap buffer owned by the XImage (XDestroyImage frees data).
     std::unique_ptr<char, decltype(&std::free)> buffer(
-        static_cast<char *>(std::malloc(static_cast<usize>(width) * height * 4)), &std::free);
+        static_cast<char *>(std::calloc(static_cast<usize>(width) * height, 4)), &std::free);
     if (!buffer)
         throw WMAException("Out of memory allocating software framebuffer");
-    std::memset(buffer.get(), 0, static_cast<usize>(width) * height * 4);
 
-    image_ = XCreateImage(display_, visual, depth, ZPixmap, 0, buffer.get(), width, height, 32, 0);
-    if (!image_)
-    {
+    slot.image = XCreateImage(display_, DefaultVisual(display_, screen), DefaultDepth(display_, screen), ZPixmap, 0,
+                              buffer.get(), width, height, 32, 0);
+    if (!slot.image)
         throw WMAException("Failed to create X11 software image");
-    }
-    image_->data = buffer.release();
+    slot.image->data = buffer.release();
 }
 
-void X11WindowManager::destroySoftwareImage()
+bool X11WindowManager::createShmImage(Slot &slot, i32 width, i32 height)
 {
-    if (image_)
+    const int screen = DefaultScreen(display_);
+    XImage *image = XShmCreateImage(display_, DefaultVisual(display_, screen), DefaultDepth(display_, screen), ZPixmap,
+                                    nullptr, &slot.shm, width, height);
+    if (!image)
+        return false;
+
+    const int id = shmget(IPC_PRIVATE, static_cast<usize>(image->bytes_per_line) * height, IPC_CREAT | 0600);
+    void *address = id < 0 ? nullptr : shmat(id, nullptr, 0);
+    if (address == reinterpret_cast<void *>(-1))
+        address = nullptr;
+    if (!address)
     {
-        XDestroyImage(image_); // also frees image_->data
-        image_ = nullptr;
+        XDestroyImage(image);
+        return false;
     }
+    slot.shm.shmid = id;
+    slot.shm.shmaddr = image->data = static_cast<char *>(address);
+    slot.shm.readOnly = False;
+
+    //! The attach is only validated by the round trip: a server on another host or IPC namespace
+    //! cannot reach the segment and answers BadAccess.
+    shmAttachFailed = false;
+    const XErrorHandler previous = XSetErrorHandler(onShmAttachError);
+    XShmAttach(display_, &slot.shm);
+    XSync(display_, False);
+    XSetErrorHandler(previous);
+    //! Marked for removal only now, so a crash leaks nothing but the server could still attach.
+    shmctl(id, IPC_RMID, nullptr);
+
+    if (shmAttachFailed)
+    {
+        shmRejected_ = true;
+        image->data = nullptr;
+        XDestroyImage(image);
+        shmdt(address);
+        slot.shm = {};
+        return false;
+    }
+    slot.image = image;
+    return true;
+}
+
+void X11WindowManager::destroySlot(Slot &slot) noexcept
+{
+    if (slot.shm.shmaddr)
+    {
+        XShmDetach(display_, &slot.shm);
+        slot.image->data = nullptr; // owned by the segment, not malloc
+        shmdt(slot.shm.shmaddr);
+    }
+    if (slot.image)
+        XDestroyImage(slot.image); // also frees data of a non-SHM slot
+    slot = {};
 }
 
 void X11WindowManager::waitEvents(int timeoutMs)
@@ -479,6 +544,14 @@ void X11WindowManager::pollEvents()
          */
         if (keyboardListener_->filterEvent(&event))
             continue;
+
+        if (event.type == shmCompletion_)
+        {
+            const ShmSeg done = reinterpret_cast<const XShmCompletionEvent &>(event).shmseg;
+            for (Slot &slot : slots_)
+                slot.busy = slot.busy && slot.shm.shmseg != done;
+            continue;
+        }
 
         handleWindowEvent(&event);
 
@@ -533,8 +606,6 @@ void X11WindowManager::handleWindowEvent(const XEvent *event)
             windowDetails_.width = xce.width;
             windowDetails_.height = xce.height;
             windowFlags_.resized = true;
-            if (graphicsAPI_ == GraphicsAPI::CPU && display_)
-                allocateSoftwareImage(xce.width, xce.height);
         }
     }
     else if (event->type == PropertyNotify && event->xproperty.atom == netWmState_)
@@ -569,17 +640,51 @@ void *X11WindowManager::getGLProcAddress(const char *name) const
 
 SoftwareFramebuffer X11WindowManager::lockFramebuffer()
 {
-    if (graphicsAPI_ != GraphicsAPI::CPU || !image_)
+    if (graphicsAPI_ != GraphicsAPI::CPU || !display_)
         return {};
-    return SoftwareFramebuffer{image_->data, windowDetails_.width, windowDetails_.height, image_->bytes_per_line};
+
+    //! Both with the server: refuse the frame. That is the pacing, as with the Wayland frame callback;
+    //! IRenderer::needsFrame() already covers the drop, and the completion event wakes waitEvents().
+    const auto idle = std::ranges::find_if(slots_,
+                                           [](const Slot &slot)
+                                           {
+                                               return !slot.busy;
+                                           });
+    if (idle == slots_.end())
+        return {};
+
+    //! Sized on demand rather than per ConfigureNotify: a drag delivers several of those per frame.
+    const i32 width = windowDetails_.width;
+    const i32 height = windowDetails_.height;
+    if (!idle->image || idle->image->width != width || idle->image->height != height)
+    {
+        destroySlot(*idle);
+        if (width <= 0 || height <= 0)
+            return {};
+        createSlot(*idle, width, height);
+    }
+    locked_ = &*idle;
+    return SoftwareFramebuffer{idle->image->data, width, height, idle->image->bytes_per_line};
 }
 
 void X11WindowManager::presentFramebuffer()
 {
-    if (!image_ || !gc_ || !display_ || !window_)
+    if (!locked_ || !gc_ || !display_ || !window_)
         return;
-    XPutImage(display_, window_, gc_, image_, 0, 0, 0, 0, static_cast<unsigned>(image_->width),
-              static_cast<unsigned>(image_->height));
+    Slot &slot = *std::exchange(locked_, nullptr);
+    const auto width = static_cast<unsigned>(slot.image->width);
+    const auto height = static_cast<unsigned>(slot.image->height);
+    if (slot.shm.shmaddr)
+    {
+        //! The slots move with the manager, which leaves the image's own pointer stale.
+        slot.image->obdata = reinterpret_cast<XPointer>(&slot.shm);
+        XShmPutImage(display_, window_, gc_, slot.image, 0, 0, 0, 0, width, height, True);
+        slot.busy = true;
+    }
+    else
+    {
+        XPutImage(display_, window_, gc_, slot.image, 0, 0, 0, 0, width, height);
+    }
     XFlush(display_);
 }
 
@@ -633,10 +738,12 @@ GraphicsAPI X11WindowManager::getGraphicsAPI() const
 WmaCode X11WindowManager::destroy()
 {
     windowShouldClose_ = true;
-    destroySoftwareImage();
+    locked_ = nullptr;
 
     if (display_)
     {
+        for (Slot &slot : slots_)
+            destroySlot(slot);
 #ifdef WMA_X11_HAS_GL
         if (glContext_)
         {

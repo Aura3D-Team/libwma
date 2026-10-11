@@ -3,6 +3,9 @@
 #include "wma/core/Types.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
+#include "wma/backends/wayland/protocols/pointer-constraints-unstable-v1-client-protocol.h"
+#include "wma/backends/wayland/protocols/relative-pointer-unstable-v1-client-protocol.h"
+
 #include <array>
 #include <linux/input-event-codes.h>
 #include <utility>
@@ -65,6 +68,8 @@ const wl_pointer_listener WaylandMouseListener::pointerListener_ = {.enter = han
                                                                     .axis_discrete = handleAxisDiscreteCallback};
 #pragma GCC diagnostic pop
 
+const zwp_relative_pointer_v1_listener WaylandMouseListener::relativeListener_ = {handleRelativeMotionCallback};
+
 WaylandMouseListener::WaylandMouseListener() : MouseListener(), pointer_(nullptr), cursorSurface_(nullptr)
 {
 }
@@ -72,10 +77,15 @@ WaylandMouseListener::WaylandMouseListener() : MouseListener(), pointer_(nullptr
 WaylandMouseListener::~WaylandMouseListener()
 {
     detach();
+    if (relativeManager_)
+        zwp_relative_pointer_manager_v1_destroy(relativeManager_);
+    if (constraints_)
+        zwp_pointer_constraints_v1_destroy(constraints_);
 }
 
 void WaylandMouseListener::detach() noexcept
 {
+    releaseCapture();
     if (cursorTheme_)
     {
         wl_cursor_theme_destroy(cursorTheme_);
@@ -147,9 +157,60 @@ void WaylandMouseListener::handleEnter(u32 serial, wl_surface *surface, wl_fixed
     applyCursorState();
 }
 
+void WaylandMouseListener::adoptPointerConstraints(zwp_pointer_constraints_v1 *constraints) noexcept
+{
+    constraints_ = constraints;
+}
+
+void WaylandMouseListener::adoptRelativePointerManager(zwp_relative_pointer_manager_v1 *manager) noexcept
+{
+    relativeManager_ = manager;
+}
+
+void WaylandMouseListener::updateCapture()
+{
+    const bool wanted = !cursorEnabled_ && focusedSurface_ && pointer_ && constraints_ && relativeManager_;
+    if (wanted == (lock_ != nullptr))
+        return;
+    if (!wanted)
+    {
+        releaseCapture();
+        return;
+    }
+
+    //! Persistent, so the compositor re-arms it when the window regains the pointer.
+    lock_ = zwp_pointer_constraints_v1_lock_pointer(constraints_, focusedSurface_, pointer_, nullptr,
+                                                    ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
+    relative_ = zwp_relative_pointer_manager_v1_get_relative_pointer(relativeManager_, pointer_);
+    zwp_relative_pointer_v1_add_listener(relative_, &relativeListener_, this);
+}
+
+void WaylandMouseListener::releaseCapture() noexcept
+{
+    if (relative_)
+        zwp_relative_pointer_v1_destroy(relative_);
+    if (lock_)
+        zwp_locked_pointer_v1_destroy(lock_);
+    relative_ = nullptr;
+    lock_ = nullptr;
+    //! The pointer sat still under the lock, so the next absolute motion must not read as a jump.
+    firstMouse_ = true;
+}
+
+void WaylandMouseListener::handleRelativeMotionCallback(void *data, zwp_relative_pointer_v1 *, u32, u32, wl_fixed_t dx,
+                                                        wl_fixed_t dy, wl_fixed_t, wl_fixed_t)
+{
+    //! The accelerated deltas, in surface pixels, matching what absolute motion gave before.
+    auto *self = static_cast<WaylandMouseListener *>(data);
+    self->dispatchMove(WMAMousePosition(self->currentPosition_.x, self->currentPosition_.y,
+                                        wl_fixed_to_double(dx) * self->sensitivity_,
+                                        -wl_fixed_to_double(dy) * self->sensitivity_));
+}
+
 void WaylandMouseListener::handleLeave(u32, wl_surface *)
 {
     focusedSurface_ = nullptr;
+    updateCapture();
     enterSerial_ = 0;
     hitCursor_ = SystemCursor::Default;
     //! A compositor move takes the pointer, and with it the release.
@@ -260,6 +321,7 @@ void WaylandMouseListener::updateCursorState()
 
 void WaylandMouseListener::applyCursorState()
 {
+    updateCapture();
     if (!pointer_)
         return;
 

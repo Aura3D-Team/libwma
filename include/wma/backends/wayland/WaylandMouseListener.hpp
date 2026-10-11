@@ -6,6 +6,12 @@
 #include <wayland-client.h>
 #include <wayland-cursor.h>
 
+struct zwp_pointer_constraints_v1;
+struct zwp_relative_pointer_manager_v1;
+struct zwp_locked_pointer_v1;
+struct zwp_relative_pointer_v1;
+struct zwp_relative_pointer_v1_listener;
+
 namespace wma
 {
 
@@ -50,6 +56,11 @@ class WaylandMouseListener : public MouseListener
     void initialize(wl_pointer *pointer, wl_compositor *compositor = nullptr, wl_shm *shm = nullptr);
 
     void detach() noexcept;
+
+    //! Take ownership. With both, a disabled cursor is locked in place and moves as deltas;
+    //! without either it is only hidden, and stops turning a camera at the screen edge.
+    void adoptPointerConstraints(zwp_pointer_constraints_v1 *constraints) noexcept;
+    void adoptRelativePointerManager(zwp_relative_pointer_manager_v1 *manager) noexcept;
 
     wl_pointer *getPointer() const
     {
@@ -96,6 +107,15 @@ class WaylandMouseListener : public MouseListener
     //! the serial counter can wrap through zero.
     u32 enterSerial_ = 0;
 
+    zwp_pointer_constraints_v1 *constraints_ = nullptr;
+    zwp_relative_pointer_manager_v1 *relativeManager_ = nullptr;
+    //! Held while the cursor is disabled and the window has the pointer.
+    zwp_locked_pointer_v1 *lock_ = nullptr;
+    zwp_relative_pointer_v1 *relative_ = nullptr;
+
+    void updateCapture();
+    void releaseCapture() noexcept;
+
     /**
      * @brief Re-applies the current cursorEnabled_ state to the compositor.
      *
@@ -109,6 +129,7 @@ class WaylandMouseListener : public MouseListener
     void applyCursorState();
 
     static const wl_pointer_listener pointerListener_;
+    static const zwp_relative_pointer_v1_listener relativeListener_;
 
     static void handleEnterCallback(void *data, wl_pointer *pointer, u32 serial, wl_surface *surface, wl_fixed_t x,
                                     wl_fixed_t y);
@@ -120,6 +141,9 @@ class WaylandMouseListener : public MouseListener
     static void handleAxisSourceCallback(void *data, wl_pointer *pointer, u32 axis_source);
     static void handleAxisStopCallback(void *data, wl_pointer *pointer, u32 time, u32 axis);
     static void handleAxisDiscreteCallback(void *data, wl_pointer *pointer, u32 axis, i32 discrete);
+    static void handleRelativeMotionCallback(void *data, zwp_relative_pointer_v1 *relative, u32 timeHigh, u32 timeLow,
+                                             wl_fixed_t dx, wl_fixed_t dy, wl_fixed_t dxUnaccelerated,
+                                             wl_fixed_t dyUnaccelerated);
 
     i32 convertButton(u32 waylandButton) const;
 };

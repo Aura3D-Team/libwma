@@ -565,15 +565,18 @@ void X11WindowManager::pollEvents()
             break;
         case FocusIn:
             windowFlags_.focused = true;
+            mouseListener_->setFocused(true);
             break;
         case FocusOut:
             windowFlags_.focused = false;
+            mouseListener_->setFocused(false);
             //! See FocusChangeMask in createWindow().
             keyboardListener_->releaseAllKeys();
             break;
         case ButtonPress:
         case ButtonRelease:
         case MotionNotify:
+        case GenericEvent:
             mouseListener_->handleEvent(&event);
             break;
         case ClientMessage:

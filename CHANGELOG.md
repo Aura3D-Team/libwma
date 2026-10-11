@@ -8,6 +8,7 @@ All notable changes to libwma are documented in this file.
 
 - `WindowBackend::X11` flickered black while resizing, with OpenGL and CPU. The window kept the default `ForgetGravity`, so a compositor dropped its contents on every resize step, and OpenGL windows also had a black background pixel the server painted over them before the next frame. Windows now use `NorthWestGravity` and no background.
 - `WindowBackend::X11` with `GraphicsAPI::CPU` had no pacing: every frame was copied through the X socket with `XPutImage` and nothing waited for the server, so an uncapped rasterizer could flood it and resizing reallocated the image on every `ConfigureNotify`. It now presents through two MIT-SHM slots like the Wayland backend's `wl_shm` pool: `lockFramebuffer()` returns an invalid framebuffer while both are still being read, and the server's completion event frees one. Falls back to `XPutImage` when the server cannot attach a segment (remote display, separate IPC namespace). Needs libXext.
+- `MouseListener::setCursorEnabled(false)` only hid the pointer on X11 and Wayland, so a camera stopped turning once it hit the screen edge or left the window. X11 now grabs the pointer and reads XInput2 raw motion, released when focus is lost; Wayland locks it with `zwp_pointer_constraints_v1` and reads `zwp_relative_pointer_v1`, falling back to hiding it on a compositor without them. Needs libXi on X11.
 
 ## [0.5.4]
 

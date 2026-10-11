@@ -3,6 +3,8 @@
 #endif
 
 #include "wma/backends/wayland/WaylandWindowManager.hpp"
+#include "wma/backends/wayland/protocols/pointer-constraints-unstable-v1-client-protocol.h"
+#include "wma/backends/wayland/protocols/relative-pointer-unstable-v1-client-protocol.h"
 #include "wma/exceptions/WMAException.hpp"
 
 #include <algorithm>
@@ -902,6 +904,16 @@ void WaylandWindowManager::handleRegistryGlobal(void *data, wl_registry *registr
     {
         manager->xdgDecorationManager_ = static_cast<zxdg_decoration_manager_v1 *>(
             wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
+    }
+    else if (strcmp(interface, zwp_pointer_constraints_v1_interface.name) == 0)
+    {
+        manager->mouseListener_->adoptPointerConstraints(static_cast<zwp_pointer_constraints_v1 *>(
+            wl_registry_bind(registry, name, &zwp_pointer_constraints_v1_interface, 1)));
+    }
+    else if (strcmp(interface, zwp_relative_pointer_manager_v1_interface.name) == 0)
+    {
+        manager->mouseListener_->adoptRelativePointerManager(static_cast<zwp_relative_pointer_manager_v1 *>(
+            wl_registry_bind(registry, name, &zwp_relative_pointer_manager_v1_interface, 1)));
     }
 }
 

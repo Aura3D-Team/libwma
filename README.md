@@ -233,7 +233,7 @@ wma::WindowDetails cfg {
 |---------|:--------------:|:------:|:------:|-----------|
 | **SDL3** | ✅ surface | ✅ context + swap | ✅ | Desktop, Android, WASM |
 | **GLFW** | ❌ throws² | ✅ context + `getProcAddress` | ✅ | Desktop |
-| **X11** | ✅ XImage | ✅ GLX¹ | ✅ (`xlib_surface`) | Linux |
+| **X11** | ✅ MIT-SHM | ✅ GLX¹ | ✅ (`xlib_surface`) | Linux |
 | **Wayland** | ✅ `wl_shm` | ✅ EGL¹ | ✅ (`wayland_surface`) | Linux |
 
 ¹ Requires GLX (X11) / EGL + `wayland-egl` (Wayland) at build time; otherwise

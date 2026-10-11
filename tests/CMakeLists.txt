@@ -29,7 +29,9 @@ if(WMA_ENABLE_WAYLAND)
         set(_wma_test_protocol_dir "${CMAKE_CURRENT_BINARY_DIR}/protocols")
         file(MAKE_DIRECTORY "${_wma_test_protocol_dir}")
         foreach(_protocol IN ITEMS "stable/xdg-shell/xdg-shell"
-                                   "unstable/xdg-decoration/xdg-decoration-unstable-v1")
+                                   "unstable/xdg-decoration/xdg-decoration-unstable-v1"
+                                   "unstable/pointer-constraints/pointer-constraints-unstable-v1"
+                                   "unstable/relative-pointer/relative-pointer-unstable-v1")
             get_filename_component(_name "${_protocol}" NAME)
             execute_process(
                 COMMAND "${WAYLAND_SCANNER}" server-header
@@ -47,5 +49,22 @@ if(WMA_ENABLE_WAYLAND)
         set_tests_properties(wma_test_wayland_window_controls PROPERTIES TIMEOUT 15)
     else()
         message(STATUS "[wma] wayland-server not found; skipping headless window control tests.")
+    endif()
+endif()
+
+# These open windows, grab the pointer and inject input, so they only run against a
+# disposable X server named by WMA_TEST_DISPLAY -- never the desktop's $DISPLAY.
+# Without it they report skipped (77) rather than failing a headless build.
+if(WMA_ENABLE_X11)
+    add_executable(wma_test_x11_cpu_present test_x11_cpu_present.cpp)
+    target_link_libraries(wma_test_x11_cpu_present PRIVATE wma)
+    add_test(NAME wma_test_x11_cpu_present COMMAND wma_test_x11_cpu_present)
+    set_tests_properties(wma_test_x11_cpu_present PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+
+    if(TARGET X11::Xtst)
+        add_executable(wma_test_x11_mouse_capture test_x11_mouse_capture.cpp)
+        target_link_libraries(wma_test_x11_mouse_capture PRIVATE wma X11::Xtst)
+        add_test(NAME wma_test_x11_mouse_capture COMMAND wma_test_x11_mouse_capture)
+        set_tests_properties(wma_test_x11_mouse_capture PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
     endif()
 endif()

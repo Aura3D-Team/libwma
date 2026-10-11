@@ -5,6 +5,15 @@ add_executable(wma_test_utf8 test_utf8.cpp)
 target_link_libraries(wma_test_utf8 PRIVATE wma)
 add_test(NAME wma_test_utf8 COMMAND wma_test_utf8)
 
+# SDL's dummy video driver stands in for a display, so this runs headless.
+add_executable(wma_test_content_scale test_content_scale.cpp)
+target_link_libraries(wma_test_content_scale PRIVATE wma)
+if(WMA_ENABLE_SDL)
+    target_compile_definitions(wma_test_content_scale PRIVATE WMA_TEST_HAS_SDL)
+endif()
+add_test(NAME wma_test_content_scale COMMAND wma_test_content_scale)
+set_tests_properties(wma_test_content_scale PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+
 # Threaded, unlike the decoder tests: MixCallbackSlot exists to make
 # setMixCallback() safe on a running device, and only two threads can show that.
 # Worth running under -fsanitize=thread, which is what turns a missed

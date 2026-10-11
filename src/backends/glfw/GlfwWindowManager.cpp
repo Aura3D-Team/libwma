@@ -346,6 +346,31 @@ FramebufferSize GlfwWindowManager::getFramebufferSize() noexcept
     return FramebufferSize{width > 0 ? width : 1, height > 0 ? height : 1};
 }
 
+f32 GlfwWindowManager::getContentScale() noexcept
+{
+    if (!window_)
+        return 1.0f;
+
+    float scaleX = 1.0f;
+    float scaleY = 1.0f;
+    glfwGetWindowContentScale(window_, &scaleX, &scaleY);
+
+    //! On macOS GLFW reports the backing-store ratio as the content scale, and
+    //! getFramebufferSize() already carries it; counting it twice would draw
+    //! the UI at four times its size.
+    int windowWidth = 0;
+    int windowHeight = 0;
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    glfwGetWindowSize(window_, &windowWidth, &windowHeight);
+    glfwGetFramebufferSize(window_, &framebufferWidth, &framebufferHeight);
+    const float ratio = windowWidth > 0 && framebufferWidth > 0
+                            ? static_cast<float>(framebufferWidth) / static_cast<float>(windowWidth)
+                            : 1.0f;
+
+    return scaleX > 0.0f ? scaleX / ratio : 1.0f;
+}
+
 WindowFlags *GlfwWindowManager::getWindowFlags() noexcept
 {
     return &windowFlags_;

@@ -473,6 +473,20 @@ FramebufferSize SdlWindowManager::getFramebufferSize() noexcept
     return FramebufferSize{width > 0 ? width : 1, height > 0 ? height : 1};
 }
 
+f32 SdlWindowManager::getContentScale() noexcept
+{
+    if (!window_)
+        return 1.0f;
+
+    //! SDL's display scale already has the pixel density folded in, and
+    //! getFramebufferSize() reports that part. Dividing it out leaves the rest,
+    //! which on Android is the whole display density: the surface is as many
+    //! pixels as the window, so the density never shows up in the two sizes.
+    const float density = SDL_GetWindowPixelDensity(window_);
+    const float display = SDL_GetWindowDisplayScale(window_);
+    return density > 0.0f && display > 0.0f ? display / density : 1.0f;
+}
+
 WindowFlags *SdlWindowManager::getWindowFlags() noexcept
 {
     return &windowFlags_;

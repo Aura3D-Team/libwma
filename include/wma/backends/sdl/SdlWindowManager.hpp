@@ -54,6 +54,7 @@ class SdlWindowManager : public IWindowManager
     u64 getSDLWindowFlags() const;
     WindowFlags *getWindowFlags() noexcept override;
     [[nodiscard]] FramebufferSize getFramebufferSize() noexcept override;
+    [[nodiscard]] f32 getContentScale() noexcept override;
     const WindowDetails *getWindowDetails() noexcept override;
     const std::vector<const char *> getVulkanExtensions() const override;
     KeyboardListener &getKeyboardListener() noexcept override;

@@ -231,8 +231,8 @@ void X11MouseListener::handleRawMotion(XGenericEventCookie &cookie)
         if (XIMaskIsSet(raw.valuators.mask, axis))
             delta[axis] = *value++;
     }
-    dispatchMove(WMAMousePosition(currentPosition_.x, currentPosition_.y, delta[0] * sensitivity_,
-                                  -delta[1] * sensitivity_));
+    dispatchMove(
+        WMAMousePosition(currentPosition_.x, currentPosition_.y, delta[0] * sensitivity_, -delta[1] * sensitivity_));
 }
 
 i32 X11MouseListener::convertButton(i32 x11Button) const

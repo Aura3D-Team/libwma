@@ -466,6 +466,8 @@ bool X11WindowManager::createShmImage(Slot &slot, i32 width, i32 height)
 
     const int id = shmget(IPC_PRIVATE, static_cast<usize>(image->bytes_per_line) * height, IPC_CREAT | 0600);
     void *address = id < 0 ? nullptr : shmat(id, nullptr, 0);
+    //! shmat() reports failure as (void *)-1.
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
     if (address == reinterpret_cast<void *>(-1))
         address = nullptr;
     if (!address)

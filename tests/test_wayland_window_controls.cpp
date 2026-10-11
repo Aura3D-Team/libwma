@@ -473,7 +473,8 @@ class Compositor
             };
             return value;
         }();
-        auto *resource = wl_resource_create(client, &zwp_pointer_constraints_v1_interface, static_cast<int>(version), id);
+        auto *resource =
+            wl_resource_create(client, &zwp_pointer_constraints_v1_interface, static_cast<int>(version), id);
         wl_resource_set_implementation(resource, &impl, data, nullptr);
     }
 

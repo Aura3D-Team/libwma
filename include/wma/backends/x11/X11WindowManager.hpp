@@ -3,6 +3,8 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/XShm.h>
+#include <array>
 #include <memory>
 
 #include "X11KeyboardListener.hpp"
@@ -76,9 +78,19 @@ class X11WindowManager : public IWindowManager
     Atom utf8String_ = 0;
     bool maximized_ = false;
 
-    //! Software rendering (GraphicsAPI::CPU)
+    //! Software rendering (GraphicsAPI::CPU). Two slots, so the next frame is drawn while the
+    //! server still reads the last, as the Wayland backend does with its wl_shm pool.
+    struct Slot
+    {
+        XImage *image = nullptr;
+        XShmSegmentInfo shm{};
+        bool busy = false; //!< The server has not yet reported it is done reading it.
+    };
     GC gc_;
-    XImage *image_;
+    std::array<Slot, 2> slots_{};
+    Slot *locked_ = nullptr;
+    int shmCompletion_ = -1;   //!< ShmCompletion event type; -1 without MIT-SHM
+    bool shmRejected_ = false; //!< The server could not attach a segment; slots use XPutImage
 
     //! OpenGL via GLX (types kept opaque so this header needs no GL includes)
     void *glContext_; //!< GLXContext
@@ -95,8 +107,9 @@ class X11WindowManager : public IWindowManager
     unsigned int captionButton_ = 0;
 
     void handleWindowEvent(const XEvent *event);
-    void allocateSoftwareImage(i32 width, i32 height);
-    void destroySoftwareImage();
+    void createSlot(Slot &slot, i32 width, i32 height);
+    [[nodiscard]] bool createShmImage(Slot &slot, i32 width, i32 height);
+    void destroySlot(Slot &slot) noexcept;
     void initGL();
     bool requestMaximized(bool maximized) noexcept;
     void refreshMaximized() noexcept;

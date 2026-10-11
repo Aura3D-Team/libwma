@@ -1,5 +1,7 @@
 // Drive the real backend over a private Wayland connection. The server only
 // implements the protocols needed by a Vulkan window; it never renders.
+#include "pointer-constraints-unstable-v1-server-protocol.h"
+#include "relative-pointer-unstable-v1-server-protocol.h"
 #include "wma/WaylandSurfaceRole.hpp"
 #include "xdg-decoration-unstable-v1-server-protocol.h"
 #include "xdg-shell-server-protocol.h"
@@ -57,12 +59,18 @@ struct Requests
     uint32_t decorationMode = 0;
     bool correctSeat = false;
     std::string title;
+    int locks = 0;
+    int lockReleases = 0;
+    int relativeReleases = 0;
+    bool lockOnPointer = false;
+    bool lockPersistent = false;
 };
 
 class Compositor
 {
   public:
-    explicit Compositor(bool decorations = false, uint32_t chosenMode = ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE)
+    explicit Compositor(bool decorations = false, uint32_t chosenMode = ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE,
+                        bool capture = false)
         : chosenMode_(chosenMode)
     {
         display_ = wl_display_create();
@@ -76,6 +84,11 @@ class Compositor
         wl_global_create(display_, &xdg_wm_base_interface, 1, this, bindShell);
         if (decorations)
             wl_global_create(display_, &zxdg_decoration_manager_v1_interface, 1, this, bindDecorations);
+        if (capture)
+        {
+            wl_global_create(display_, &zwp_pointer_constraints_v1_interface, 1, this, bindConstraints);
+            wl_global_create(display_, &zwp_relative_pointer_manager_v1_interface, 1, this, bindRelativeManager);
+        }
 
         std::array<int, 2> sockets{};
         require(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets.data()) == 0,
@@ -167,6 +180,17 @@ class Compositor
                 wl_pointer_send_leave(pointer_, 200, surface_);
             });
     }
+    void relativeMotion(int dx, int dy)
+    {
+        invoke(
+            [this, dx, dy]
+            {
+                require(relative_, "relative pointer exists");
+                zwp_relative_pointer_v1_send_relative_motion(relative_, 0, 0, wl_fixed_from_int(dx),
+                                                             wl_fixed_from_int(dy), wl_fixed_from_int(dx),
+                                                             wl_fixed_from_int(dy));
+            });
+    }
     void removePointer()
     {
         invoke(
@@ -232,6 +256,7 @@ class Compositor
     wl_resource *xdgSurface_ = nullptr;
     wl_resource *toplevel_ = nullptr;
     wl_resource *decoration_ = nullptr;
+    wl_resource *relative_ = nullptr;
     bool initialConfigure_ = false;
     uint32_t configureSerial_ = 1;
     uint32_t chosenMode_;
@@ -411,6 +436,69 @@ class Compositor
             },
         };
         auto *resource = wl_resource_create(client, &xdg_wm_base_interface, static_cast<int>(version), id);
+        wl_resource_set_implementation(resource, &impl, data, nullptr);
+    }
+
+    static void bindConstraints(wl_client *client, void *data, uint32_t version, uint32_t id)
+    {
+        static const struct zwp_pointer_constraints_v1_interface impl = []
+        {
+            struct zwp_pointer_constraints_v1_interface value{};
+            value.destroy = destroy;
+            value.lock_pointer = [](wl_client *client, wl_resource *resource, uint32_t id, wl_resource *,
+                                    wl_resource *pointer, wl_resource *, uint32_t lifetime)
+            {
+                static const struct zwp_locked_pointer_v1_interface lockImpl = []
+                {
+                    struct zwp_locked_pointer_v1_interface value{};
+                    value.destroy = destroy;
+                    value.set_cursor_position_hint = [](wl_client *, wl_resource *, wl_fixed_t, wl_fixed_t)
+                    {
+                    };
+                    value.set_region = [](wl_client *, wl_resource *, wl_resource *)
+                    {
+                    };
+                    return value;
+                }();
+                auto &self = owner(resource);
+                ++self.requests_.locks;
+                self.requests_.lockOnPointer = pointer == self.pointer_;
+                self.requests_.lockPersistent = lifetime == ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT;
+                auto *lock = wl_resource_create(client, &zwp_locked_pointer_v1_interface, 1, id);
+                wl_resource_set_implementation(lock, &lockImpl, &self,
+                                               [](wl_resource *lock)
+                                               {
+                                                   ++owner(lock).requests_.lockReleases;
+                                               });
+            };
+            return value;
+        }();
+        auto *resource =
+            wl_resource_create(client, &zwp_pointer_constraints_v1_interface, static_cast<int>(version), id);
+        wl_resource_set_implementation(resource, &impl, data, nullptr);
+    }
+
+    static void bindRelativeManager(wl_client *client, void *data, uint32_t version, uint32_t id)
+    {
+        static const struct zwp_relative_pointer_manager_v1_interface impl = {
+            .destroy = destroy,
+            .get_relative_pointer =
+                [](wl_client *client, wl_resource *resource, uint32_t id, wl_resource *)
+            {
+                static const struct zwp_relative_pointer_v1_interface relativeImpl = {.destroy = destroy};
+                auto &self = owner(resource);
+                self.relative_ = wl_resource_create(client, &zwp_relative_pointer_v1_interface, 1, id);
+                wl_resource_set_implementation(self.relative_, &relativeImpl, &self,
+                                               [](wl_resource *relative)
+                                               {
+                                                   auto &self = owner(relative);
+                                                   ++self.requests_.relativeReleases;
+                                                   self.relative_ = nullptr;
+                                               });
+            },
+        };
+        auto *resource =
+            wl_resource_create(client, &zwp_relative_pointer_manager_v1_interface, static_cast<int>(version), id);
         wl_resource_set_implementation(resource, &impl, data, nullptr);
     }
 
@@ -740,6 +828,67 @@ void testMovesAndSeatRemoval()
               !window->setTitle("destroyed") && !window->isMaximized(),
           "controls safely reject calls after native resources are destroyed");
 }
+
+void testPointerCapture()
+{
+    Compositor server(false, ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE, true);
+    auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, {});
+    window->createWindow("capture");
+    sync(*window);
+
+    f64 deltaX = 0.0;
+    f64 deltaY = 0.0;
+    auto &mouse = window->getMouseListener();
+    mouse.setMoveAction(wma::MouseAction{[&](const wma::WMAMousePosition &position)
+                                         {
+                                             deltaX = position.deltaX;
+                                             deltaY = position.deltaY;
+                                         }});
+    mouse.setCursorEnabled(false);
+    sync(*window);
+    check(server.requests().locks == 0, "nothing is locked before the pointer is over the window");
+
+    server.enter();
+    sync(*window);
+    auto requests = server.requests();
+    check(requests.locks == 1 && requests.lockOnPointer && requests.lockPersistent,
+          "entering with the cursor disabled locks the pointer persistently");
+
+    server.relativeMotion(7, -3);
+    sync(*window);
+    check(deltaX == 7.0 && deltaY == 3.0, "relative motion becomes look deltas, up positive");
+
+    mouse.setCursorEnabled(true);
+    sync(*window);
+    requests = server.requests();
+    check(requests.lockReleases == 1 && requests.relativeReleases == 1, "enabling the cursor releases the lock");
+
+    mouse.setCursorEnabled(false);
+    sync(*window);
+    check(server.requests().locks == 2, "disabling it again locks without a new enter");
+
+    server.leave();
+    sync(*window);
+    check(server.requests().lockReleases == 2, "leaving the window releases the lock");
+    server.enter();
+    sync(*window);
+    check(server.requests().locks == 3, "and the next enter takes it again");
+    window->destroy();
+}
+
+void testCaptureWithoutProtocols()
+{
+    Compositor server;
+    auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, {});
+    window->createWindow("no capture protocols");
+    sync(*window);
+    window->getMouseListener().setCursorEnabled(false);
+    server.enter();
+    sync(*window);
+    check(server.requests().locks == 0 && window->getMouseListener().isCursorEnabled() == false,
+          "a compositor without pointer constraints still just hides the cursor");
+    window->destroy();
+}
 } // namespace
 
 int main()
@@ -752,6 +901,8 @@ int main()
         testCustomRole();
         testFixedSizeWindow();
         testMovesAndSeatRemoval();
+        testPointerCapture();
+        testCaptureWithoutProtocols();
     }
     catch (const std::exception &error)
     {

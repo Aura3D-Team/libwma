@@ -146,6 +146,14 @@ set(WMA_ENABLE_WAYLAND_GL FALSE)
 
 if(WMA_ENABLE_X11)
     find_package(X11 REQUIRED)
+    # MIT-SHM, which the CPU path presents through.
+    if(NOT TARGET X11::Xext)
+        message(FATAL_ERROR "[wma] libXext not found — the X11 backend needs it for MIT-SHM.")
+    endif()
+    # XInput2 raw motion, which mouse capture reads its deltas from.
+    if(NOT TARGET X11::Xi)
+        message(FATAL_ERROR "[wma] libXi not found — the X11 backend needs it for mouse capture.")
+    endif()
     # Optional: GLX for OpenGL-on-X11. Provides the imported target OpenGL::GLX.
     find_package(OpenGL COMPONENTS OpenGL GLX)
     if(TARGET OpenGL::GLX)
@@ -234,5 +242,16 @@ if(WMA_ENABLE_WAYLAND)
         unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
         xdg-decoration-unstable-v1-client-protocol.h
         xdg-decoration-unstable-v1-protocol.c
+    )
+    # Mouse capture: lock the pointer in place and read its motion as deltas.
+    wma_generate_wayland_protocol(
+        unstable/pointer-constraints/pointer-constraints-unstable-v1.xml
+        pointer-constraints-unstable-v1-client-protocol.h
+        pointer-constraints-unstable-v1-protocol.c
+    )
+    wma_generate_wayland_protocol(
+        unstable/relative-pointer/relative-pointer-unstable-v1.xml
+        relative-pointer-unstable-v1-client-protocol.h
+        relative-pointer-unstable-v1-protocol.c
     )
 endif()

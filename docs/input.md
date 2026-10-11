@@ -114,6 +114,11 @@ mouse.setSystemCursor(wma::SystemCursor::NwseResize); // CSS-named system image
 mouse.setSensitivity(1.5);
 ```
 
+`setCursorEnabled(false)` captures the pointer, so look deltas keep arriving at the screen
+edge on every backend: X11 grabs it and reads XInput2 raw motion, Wayland locks it
+(`pointer-constraints` + `relative-pointer`; a compositor without them only hides it),
+SDL3 and GLFW use their relative mode.
+
 Most getters are `[[nodiscard]]`. A cursor the platform cannot show falls back to
 the arrow: Emscripten's GLFW has none, and X11's core font has no diagonal
 double arrows, so it uses corner arrows.

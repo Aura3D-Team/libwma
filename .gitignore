@@ -3,6 +3,8 @@
 /bin/
 /out/
 releases/
+.qtcreator/
+.zed/
 
 # Ignore compiled object files
 *.o

@@ -89,10 +89,19 @@ class GlfwWindowManager : public IWindowManager
     HitTest hitTest_;
     detail::CaptionGesture caption_;
 
+    //! Kept from GLFW's callbacks. Reading them back is a server round trip on X11, and the UI asks for both
+    //! every frame, so they are looked up when they change rather than when they are asked for.
+    i32 framebufferWidth_ = 0;
+    i32 framebufferHeight_ = 0;
+    f32 contentScale_ = 1.0f;
+
+    void refreshContentScale() noexcept;
+
     static void framebufferSizeCallback(GLFWwindow *window, int width, int height);
     static void windowFocusCallback(GLFWwindow *window, int focused);
     static void windowIconifyCallback(GLFWwindow *window, int iconified);
     static void windowMaximizeCallback(GLFWwindow *window, int maximized);
+    static void contentScaleCallback(GLFWwindow *window, float xscale, float yscale);
     void initializeGLFW();
     static GlfwWindowManager *getInstanceFromWindow(GLFWwindow *window);
 };

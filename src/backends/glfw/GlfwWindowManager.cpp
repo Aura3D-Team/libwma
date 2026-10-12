@@ -54,7 +54,8 @@ GlfwWindowManager::GlfwWindowManager(GlfwWindowManager &&other) noexcept
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
       userData_(std::move(other.userData_)), windowShouldClose_(other.windowShouldClose_),
       ownsInit_(std::exchange(other.ownsInit_, false)), maximized_(std::exchange(other.maximized_, false)),
-      hitTest_(std::move(other.hitTest_)), caption_(other.caption_)
+      hitTest_(std::move(other.hitTest_)), caption_(other.caption_), framebufferWidth_(other.framebufferWidth_),
+      framebufferHeight_(other.framebufferHeight_), contentScale_(other.contentScale_)
 {
     if (userData_)
     {
@@ -82,6 +83,9 @@ GlfwWindowManager &GlfwWindowManager::operator=(GlfwWindowManager &&other) noexc
         maximized_ = std::exchange(other.maximized_, false);
         hitTest_ = std::move(other.hitTest_);
         caption_ = other.caption_;
+        framebufferWidth_ = other.framebufferWidth_;
+        framebufferHeight_ = other.framebufferHeight_;
+        contentScale_ = other.contentScale_;
         if (userData_)
         {
             userData_->windowManager = this;
@@ -161,11 +165,14 @@ void GlfwWindowManager::createWindow(const char *windowName)
 
     glfwSetWindowUserPointer(window_, userData_.get());
     glfwSetFramebufferSizeCallback(window_, framebufferSizeCallback);
+    glfwSetWindowContentScaleCallback(window_, contentScaleCallback);
     glfwSetWindowFocusCallback(window_, windowFocusCallback);
     glfwSetWindowIconifyCallback(window_, windowIconifyCallback);
     //! GLFW's X11 attribute query is a server round trip; the callback is not.
     glfwSetWindowMaximizeCallback(window_, windowMaximizeCallback);
     maximized_ = glfwGetWindowAttrib(window_, GLFW_MAXIMIZED) == GLFW_TRUE;
+    glfwGetFramebufferSize(window_, &framebufferWidth_, &framebufferHeight_);
+    refreshContentScale();
 
     if (graphicsAPI_ == GraphicsAPI::OpenGL)
     {
@@ -334,22 +341,25 @@ void *GlfwWindowManager::getMetalLayer() const noexcept
 
 FramebufferSize GlfwWindowManager::getFramebufferSize() noexcept
 {
-    int width = 0;
-    int height = 0;
-
-    //! glfwGetFramebufferSize, not glfwGetWindowSize: the latter reports the
-    //! logical size in screen coordinates, which the base implementation
-    //! already covers.
-    if (window_)
-        glfwGetFramebufferSize(window_, &width, &height);
-
-    return FramebufferSize{width > 0 ? width : 1, height > 0 ? height : 1};
+    //! glfwGetFramebufferSize, not glfwGetWindowSize: the latter reports the logical size in screen
+    //! coordinates, which the base implementation already covers. Read from GLFW when it changes (see
+    //! framebufferSizeCallback), not on every call: on X11 each read is a round trip to the server.
+    return FramebufferSize{framebufferWidth_ > 0 ? framebufferWidth_ : 1,
+                           framebufferHeight_ > 0 ? framebufferHeight_ : 1};
 }
 
 f32 GlfwWindowManager::getContentScale() noexcept
 {
+    return contentScale_;
+}
+
+void GlfwWindowManager::refreshContentScale() noexcept
+{
     if (!window_)
-        return 1.0f;
+    {
+        contentScale_ = 1.0f;
+        return;
+    }
 
     float scaleX = 1.0f;
     float scaleY = 1.0f;
@@ -360,15 +370,12 @@ f32 GlfwWindowManager::getContentScale() noexcept
     //! the UI at four times its size.
     int windowWidth = 0;
     int windowHeight = 0;
-    int framebufferWidth = 0;
-    int framebufferHeight = 0;
     glfwGetWindowSize(window_, &windowWidth, &windowHeight);
-    glfwGetFramebufferSize(window_, &framebufferWidth, &framebufferHeight);
-    const float ratio = windowWidth > 0 && framebufferWidth > 0
-                            ? static_cast<float>(framebufferWidth) / static_cast<float>(windowWidth)
+    const float ratio = windowWidth > 0 && framebufferWidth_ > 0
+                            ? static_cast<float>(framebufferWidth_) / static_cast<float>(windowWidth)
                             : 1.0f;
 
-    return scaleX > 0.0f ? scaleX / ratio : 1.0f;
+    contentScale_ = scaleX > 0.0f ? scaleX / ratio : 1.0f;
 }
 
 WindowFlags *GlfwWindowManager::getWindowFlags() noexcept
@@ -486,7 +493,17 @@ void GlfwWindowManager::framebufferSizeCallback(GLFWwindow *window, int width, i
         instance->windowDetails_.width = width;
         instance->windowDetails_.height = height;
         instance->windowFlags_.resized = true;
+        instance->framebufferWidth_ = width;
+        instance->framebufferHeight_ = height;
+        //! The window and framebuffer sizes change together, and their ratio is part of the content scale.
+        instance->refreshContentScale();
     }
+}
+
+void GlfwWindowManager::contentScaleCallback(GLFWwindow *window, float, float)
+{
+    if (auto *instance = getInstanceFromWindow(window))
+        instance->refreshContentScale();
 }
 
 void GlfwWindowManager::windowFocusCallback(GLFWwindow *window, int focused)

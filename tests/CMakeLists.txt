@@ -77,3 +77,12 @@ if(WMA_ENABLE_X11)
         set_tests_properties(wma_test_x11_mouse_capture PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
     endif()
 endif()
+
+# The size and scale GlfwWindowManager keeps are the ones GLFW reported. Needs a display; WMA_TEST_DISPLAY names a
+# disposable X server, and without it this reports skipped (77).
+if(WMA_ENABLE_GLFW)
+    add_executable(wma_test_glfw_metrics test_glfw_metrics.cpp)
+    target_link_libraries(wma_test_glfw_metrics PRIVATE wma glfw)
+    add_test(NAME wma_test_glfw_metrics COMMAND wma_test_glfw_metrics)
+    set_tests_properties(wma_test_glfw_metrics PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+endif()

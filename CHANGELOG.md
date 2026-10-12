@@ -2,6 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.6.1]
+
+### Changed
+
+- `GlfwWindowManager` no longer asks GLFW for the framebuffer size and the content scale on every call. On X11 each of those is a round trip to the server, `getContentScale()` made three of them, and a UI asks for both every frame: about 30 µs a frame, against a few nanoseconds now. They are read when GLFW reports a resize or a scale change, and at window creation.
+
 ## [0.6.0]
 
 ### Added

@@ -2,6 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.6.2]
+
+### Changed
+
+- `.gitignore` with some more stuff to not track
+
 ## [0.6.1]
 
 ### Changed

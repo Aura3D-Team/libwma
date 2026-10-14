@@ -110,7 +110,7 @@ mouse.setScrollAction(wma::MouseAction{[](const wma::WMAMouseScroll& s) {
 const auto pos    = mouse.getCurrentPosition();
 const auto scroll = mouse.consumeScrollDelta();       // accumulated since last call
 mouse.setCursorEnabled(false);                        // FPS capture
-mouse.setSystemCursor(wma::SystemCursor::NwseResize); // CSS-named system image
+mouse.setSystemCursor(wma::SystemCursor::Pointer);    // CSS-named system image
 mouse.setSensitivity(1.5);
 ```
 
@@ -118,6 +118,12 @@ mouse.setSensitivity(1.5);
 edge on every backend: X11 grabs it and reads XInput2 raw motion, Wayland locks it
 (`pointer-constraints` + `relative-pointer`; a compositor without them only hides it),
 SDL3 and GLFW use their relative mode.
+
+| `SystemCursor` | |
+|---|---|
+| `Default` | Arrow |
+| `Pointer` · `Text` · `Grabbing` | Hand · I-beam · closed hand (GLFW has no closed hand: it shows the open one) |
+| `NsResize` · `EwResize` · `NwseResize` · `NeswResize` | Resize arrows |
 
 Most getters are `[[nodiscard]]`. A cursor the platform cannot show falls back to
 the arrow: Emscripten's GLFW has none, and X11's core font has no diagonal

@@ -28,6 +28,9 @@ constexpr std::array<CursorNames, wma::SYSTEM_CURSOR_COUNT> kCursorNames{{
     {"ew-resize", "size_hor", "sb_h_double_arrow"},
     {"nwse-resize", "size_fdiag", "bottom_right_corner"},
     {"nesw-resize", "size_bdiag", "bottom_left_corner"},
+    {"pointer", "hand2", "hand1"},
+    {"text", "xterm", "ibeam"},
+    {"grabbing", "closedhand", "fleur"},
 }};
 
 [[nodiscard]] wl_cursor *loadCursor(wl_cursor_theme *theme, wma::SystemCursor shape)

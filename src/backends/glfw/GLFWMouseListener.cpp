@@ -20,6 +20,11 @@ namespace
         return GLFW_VRESIZE_CURSOR;
     case SystemCursor::EwResize:
         return GLFW_HRESIZE_CURSOR;
+    case SystemCursor::Pointer:
+    case SystemCursor::Grabbing: // GLFW has no closed hand.
+        return GLFW_HAND_CURSOR;
+    case SystemCursor::Text:
+        return GLFW_IBEAM_CURSOR;
 //! Diagonal shapes arrived in GLFW 3.4; Emscripten's port predates them.
 #ifdef GLFW_RESIZE_NWSE_CURSOR
     case SystemCursor::NwseResize:

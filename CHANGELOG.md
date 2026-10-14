@@ -8,8 +8,6 @@ All notable changes to libwma are documented in this file.
 
 - `SystemCursor::Pointer`, `Text` and `Grabbing`: a hand, an I-beam and a closed hand, on the Wayland, X11, SDL3 and GLFW backends. GLFW has no closed hand and shows the open one.
 
-## [0.6.2]
-
 ### Changed
 
 - `.gitignore` with some more stuff to not track

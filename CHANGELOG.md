@@ -2,6 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.7.1]
+
+### Fixed
+
+- Android's Back button was not a key at all, so an application could not close a dialog with it. The SDL3 backend now reports it as `KEY_ESCAPE`.
+
 ## [0.7.0]
 
 ### Added

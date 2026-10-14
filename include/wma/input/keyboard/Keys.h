@@ -486,6 +486,7 @@ inline Key mapSDLKey(SDL_Keycode sdlKey)
 
         // Controls
     case SDLK_ESCAPE:
+    case SDLK_AC_BACK: // Android's Back, which an application treats as Escape: close what is open.
         return Key::KEY_ESCAPE;
     case SDLK_RETURN:
         return Key::KEY_ENTER;

@@ -23,9 +23,9 @@ enum class SystemCursor : u8
     EwResize,
     NwseResize,
     NeswResize,
-    Pointer,  //!< A hand over something clickable.
-    Text,     //!< An I-beam over text that can be edited.
-    Grabbing  //!< A closed hand while something is carried.
+    Pointer, //!< A hand over something clickable.
+    Text,    //!< An I-beam over text that can be edited.
+    Grabbing //!< A closed hand while something is carried.
 };
 
 constexpr usize SYSTEM_CURSOR_COUNT = 8;

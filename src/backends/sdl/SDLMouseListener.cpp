@@ -22,6 +22,12 @@ namespace
         return SDL_SYSTEM_CURSOR_NWSE_RESIZE;
     case SystemCursor::NeswResize:
         return SDL_SYSTEM_CURSOR_NESW_RESIZE;
+    case SystemCursor::Pointer:
+        return SDL_SYSTEM_CURSOR_POINTER;
+    case SystemCursor::Text:
+        return SDL_SYSTEM_CURSOR_TEXT;
+    case SystemCursor::Grabbing:
+        return SDL_SYSTEM_CURSOR_MOVE;
     case SystemCursor::Default:
         break;
     }

@@ -26,6 +26,12 @@ namespace
         return XC_bottom_right_corner;
     case SystemCursor::NeswResize:
         return XC_bottom_left_corner;
+    case SystemCursor::Pointer:
+        return XC_hand2;
+    case SystemCursor::Text:
+        return XC_xterm;
+    case SystemCursor::Grabbing:
+        return XC_fleur;
     case SystemCursor::Default:
         break;
     }

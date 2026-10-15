@@ -172,8 +172,15 @@ void WaylandKeyboardListener::handleKeymap(u32 format, i32 fd, u32 size)
         composeState_ = xkb_compose_state_new(composeTable_, XKB_COMPOSE_STATE_NO_FLAGS);
 }
 
-void WaylandKeyboardListener::handleEnter(u32, wl_surface *, wl_array *)
+void WaylandKeyboardListener::setInputSerialSink(u32 *sink) noexcept
 {
+    inputSerial_ = sink;
+}
+
+void WaylandKeyboardListener::handleEnter(u32 serial, wl_surface *, wl_array *)
+{
+    if (inputSerial_)
+        *inputSerial_ = serial;
     if (windowFlags_)
         windowFlags_->focused = true;
 }
@@ -319,8 +326,11 @@ Key WaylandKeyboardListener::keyFor(u32 xkbKeycode) const
     return named != Key::KEY_UNKNOWN ? named : mapWaylandKey(xkbKeycode);
 }
 
-void WaylandKeyboardListener::handleKey(u32, u32, u32 key, u32 state)
+void WaylandKeyboardListener::handleKey(u32 serial, u32, u32 key, u32 state)
 {
+    if (inputSerial_ && state == WL_KEYBOARD_KEY_STATE_PRESSED)
+        *inputSerial_ = serial;
+
     //! Wayland reports evdev keycodes; xkb numbers the same keys 8 higher.
     const u32 xkbKeycode = key + 8;
     const Key mappedKey = keyFor(xkbKeycode);

@@ -524,6 +524,32 @@ bool SdlWindowManager::isTextInputEnabled() const noexcept
 {
     return keyboardListener_ && keyboardListener_->isTextInputEnabled();
 }
+
+bool SdlWindowManager::isClipboardSupported() const noexcept
+{
+    return window_ != nullptr;
+}
+
+std::string SdlWindowManager::getClipboardText()
+{
+    //! SDL returns an owned, possibly empty string, and null only on failure.
+    char *text = window_ ? SDL_GetClipboardText() : nullptr;
+    if (!text)
+        return {};
+
+    std::string result{text};
+    SDL_free(text);
+    return result;
+}
+
+bool SdlWindowManager::setClipboardText(std::string_view text)
+{
+    //! SDL takes a C string; one with an embedded NUL would be cut short there, so it is refused rather than altered.
+    if (!window_ || text.find('\0') != std::string_view::npos)
+        return false;
+
+    return SDL_SetClipboardText(std::string{text}.c_str());
+}
 MouseListener &SdlWindowManager::getMouseListener() noexcept
 {
     return *mouseListener_;

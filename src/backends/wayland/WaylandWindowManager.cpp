@@ -3,6 +3,7 @@
 #endif
 
 #include "wma/backends/wayland/WaylandWindowManager.hpp"
+#include "backends/wayland/WaylandClipboard.hpp"
 #include "wma/backends/wayland/protocols/pointer-constraints-unstable-v1-client-protocol.h"
 #include "wma/backends/wayland/protocols/relative-pointer-unstable-v1-client-protocol.h"
 #include "wma/exceptions/WMAException.hpp"
@@ -78,6 +79,7 @@ WaylandWindowManager::WaylandWindowManager(const WindowDetails &windowDetails, G
       mouseListener_(std::make_unique<WaylandMouseListener>())
 {
     mouseListener_->owner_ = this;
+    keyboardListener_->setInputSerialSink(&inputSerial_);
 }
 
 WaylandWindowManager::~WaylandWindowManager()
@@ -95,6 +97,7 @@ WaylandWindowManager::WaylandWindowManager(WaylandWindowManager &&other) noexcep
       xdgDecorationManager_(std::exchange(other.xdgDecorationManager_, nullptr)),
       xdgToplevelDecoration_(std::exchange(other.xdgToplevelDecoration_, nullptr)),
       keyboard_(std::exchange(other.keyboard_, nullptr)), pointer_(std::exchange(other.pointer_, nullptr)),
+      inputSerial_(std::exchange(other.inputSerial_, 0)), clipboard_(std::move(other.clipboard_)),
       shmPool_(std::move(other.shmPool_)), retiringPool_(std::move(other.retiringPool_)),
       lockedSlot_(std::exchange(other.lockedSlot_, nullptr)),
       frameCallback_(std::exchange(other.frameCallback_, nullptr)),
@@ -136,6 +139,8 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         xdgToplevelDecoration_ = std::exchange(other.xdgToplevelDecoration_, nullptr);
         keyboard_ = std::exchange(other.keyboard_, nullptr);
         pointer_ = std::exchange(other.pointer_, nullptr);
+        inputSerial_ = std::exchange(other.inputSerial_, 0);
+        clipboard_ = std::move(other.clipboard_);
         shmPool_ = std::move(other.shmPool_);
         retiringPool_ = std::move(other.retiringPool_);
         lockedSlot_ = std::exchange(other.lockedSlot_, nullptr);
@@ -173,7 +178,10 @@ void WaylandWindowManager::rebindListeners() noexcept
     if (role_)
         role_->rebind(&windowDetails_, &windowFlags_);
     if (keyboardListener_)
+    {
         keyboardListener_->setWindowFlags(&windowFlags_);
+        keyboardListener_->setInputSerialSink(&inputSerial_);
+    }
     if (mouseListener_)
         mouseListener_->owner_ = this;
     const auto rebind = [this](auto *proxy)
@@ -199,6 +207,9 @@ void WaylandWindowManager::createWindow(const char *windowName)
     display_ = wl_display_connect(nullptr);
     if (!display_)
         throw WindowException("Failed to connect to Wayland display (is WAYLAND_DISPLAY set?)");
+
+    //! Before the registry is read: the data device manager and the seat can arrive in either order.
+    clipboard_ = std::make_unique<WaylandClipboard>(display_);
 
     registry_ = wl_display_get_registry(display_);
     wl_registry_add_listener(registry_, &registryListener_, this);
@@ -608,6 +619,21 @@ void WaylandWindowManager::setTextInputEnabled(bool enabled) noexcept
         keyboardListener_->setTextInputEnabled(enabled);
 }
 
+bool WaylandWindowManager::isClipboardSupported() const noexcept
+{
+    return clipboard_ && clipboard_->supported();
+}
+
+std::string WaylandWindowManager::getClipboardText()
+{
+    return clipboard_ ? clipboard_->text() : std::string{};
+}
+
+bool WaylandWindowManager::setClipboardText(std::string_view text)
+{
+    return clipboard_ && clipboard_->setText(text, inputSerial_);
+}
+
 bool WaylandWindowManager::isTextInputEnabled() const noexcept
 {
     return keyboardListener_ && keyboardListener_->isTextInputEnabled();
@@ -803,6 +829,10 @@ WmaCode WaylandWindowManager::destroy()
     retiringPool_.reset();
     shmPool_.reset();
 
+    //! Before the seat: its device is made from it.
+    clipboard_.reset();
+    inputSerial_ = 0;
+
     if (keyboard_)
     {
         wl_keyboard_destroy(keyboard_);
@@ -899,6 +929,14 @@ void WaylandWindowManager::handleRegistryGlobal(void *data, wl_registry *registr
         manager->seat_ = static_cast<wl_seat *>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
         manager->seatGlobalName_ = name;
         wl_seat_add_listener(manager->seat_, &seatListener_, manager);
+        if (manager->clipboard_)
+            manager->clipboard_->attachSeat(manager->seat_);
+    }
+    else if (strcmp(interface, wl_data_device_manager_interface.name) == 0 && manager->clipboard_)
+    {
+        //! Version 1 is all text needs, and the newest the compositor offers would add drag-and-drop requirements.
+        manager->clipboard_->adoptManager(static_cast<wl_data_device_manager *>(
+            wl_registry_bind(registry, name, &wl_data_device_manager_interface, 1)));
     }
     else if (strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
     {
@@ -925,6 +963,9 @@ void WaylandWindowManager::handleRegistryGlobalRemove(void *data, wl_registry *,
 
     //! A removed seat cannot authorize a later interactive window operation.
     handleSeatCapabilities(manager, manager->seat_, 0);
+    if (manager->clipboard_)
+        manager->clipboard_->detachSeat();
+    manager->inputSerial_ = 0;
     wl_seat_destroy(manager->seat_);
     manager->seat_ = nullptr;
     manager->seatGlobalName_ = 0;

@@ -1,5 +1,6 @@
 #ifdef WMA_ENABLE_X11
 #include "wma/backends/x11/X11WindowManager.hpp"
+#include "backends/x11/X11Clipboard.hpp"
 #include "backends/x11/X11MoveResize.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
@@ -65,8 +66,8 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
       glContext_(std::exchange(other.glContext_, nullptr)), fbConfig_(other.fbConfig_),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
-      windowShouldClose_(other.windowShouldClose_), hitTest_(std::move(other.hitTest_)), caption_(other.caption_),
-      captionButton_(other.captionButton_)
+      clipboard_(std::move(other.clipboard_)), windowShouldClose_(other.windowShouldClose_),
+      hitTest_(std::move(other.hitTest_)), caption_(other.caption_), captionButton_(other.captionButton_)
 {
     if (mouseListener_)
         mouseListener_->owner_ = this;
@@ -98,6 +99,7 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         graphicsAPI_ = other.graphicsAPI_;
         keyboardListener_ = std::move(other.keyboardListener_);
         mouseListener_ = std::move(other.mouseListener_);
+        clipboard_ = std::move(other.clipboard_);
         windowShouldClose_ = other.windowShouldClose_;
         hitTest_ = std::move(other.hitTest_);
         caption_ = other.caption_;
@@ -227,6 +229,7 @@ void X11WindowManager::createWindow(const char *windowName)
     netWmStateMaximizedHorz_ = atoms[2];
     netWmName_ = atoms[3];
     utf8String_ = atoms[4];
+    clipboard_ = std::make_unique<X11Clipboard>(display_, window_);
 
     setTitle(windowName);
 
@@ -587,6 +590,14 @@ void X11WindowManager::pollEvents()
                 close();
             }
             break;
+        case SelectionRequest:
+            if (clipboard_)
+                clipboard_->handleRequest(event.xselectionrequest);
+            break;
+        case SelectionClear:
+            if (clipboard_)
+                clipboard_->handleClear(event.xselectionclear);
+            break;
         default:
             break;
         }
@@ -723,6 +734,22 @@ bool X11WindowManager::isTextInputEnabled() const noexcept
 {
     return keyboardListener_ && keyboardListener_->isTextInputEnabled();
 }
+
+bool X11WindowManager::isClipboardSupported() const noexcept
+{
+    return clipboard_ != nullptr;
+}
+
+std::string X11WindowManager::getClipboardText()
+{
+    return clipboard_ ? clipboard_->text() : std::string{};
+}
+
+bool X11WindowManager::setClipboardText(std::string_view text)
+{
+    return clipboard_ && clipboard_->setText(text);
+}
+
 MouseListener &X11WindowManager::getMouseListener() noexcept
 {
     return *mouseListener_;
@@ -747,6 +774,8 @@ WmaCode X11WindowManager::destroy()
 
     if (display_)
     {
+        //! While the connection is open: giving up the selection is a request on it.
+        clipboard_.reset();
         for (Slot &slot : slots_)
             destroySlot(slot);
 #ifdef WMA_X11_HAS_GL

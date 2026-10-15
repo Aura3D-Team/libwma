@@ -40,6 +40,8 @@ class WaylandKeyboardListener : public KeyboardListener
     {
         windowFlags_ = flags;
     }
+    //! Where the serial of each key press and of keyboard focus is recorded: what a clipboard request must present.
+    void setInputSerialSink(u32 *sink) noexcept;
     wl_keyboard *getKeyboard() const
     {
         return keyboard_;
@@ -90,6 +92,7 @@ class WaylandKeyboardListener : public KeyboardListener
     xkb_compose_state *composeState_ = nullptr;
 
     WindowFlags *windowFlags_ = nullptr;
+    u32 *inputSerial_ = nullptr;
     bool textInputEnabled_ = false;
 
     static const wl_keyboard_listener keyboardListener_;

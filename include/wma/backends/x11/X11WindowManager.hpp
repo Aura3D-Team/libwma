@@ -15,6 +15,8 @@
 namespace wma
 {
 
+class X11Clipboard;
+
 class X11WindowManager : public IWindowManager
 {
   public:
@@ -49,6 +51,9 @@ class X11WindowManager : public IWindowManager
     KeyboardListener &getKeyboardListener() noexcept override;
     void setTextInputEnabled(bool enabled) noexcept override;
     [[nodiscard]] bool isTextInputEnabled() const noexcept override;
+    [[nodiscard]] bool isClipboardSupported() const noexcept override;
+    [[nodiscard]] std::string getClipboardText() override;
+    bool setClipboardText(std::string_view text) override;
     MouseListener &getMouseListener() noexcept override;
     bool shouldClose() const override;
     WindowBackend getBackendType() const override;
@@ -101,6 +106,8 @@ class X11WindowManager : public IWindowManager
     GraphicsAPI graphicsAPI_;
     std::unique_ptr<X11KeyboardListener> keyboardListener_;
     std::unique_ptr<X11MouseListener> mouseListener_;
+    //! Created with the window; the selection it owns goes with the connection, so it is released before it closes.
+    std::unique_ptr<X11Clipboard> clipboard_;
     bool windowShouldClose_;
     HitTest hitTest_;
     detail::CaptionGesture caption_;

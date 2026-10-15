@@ -6,14 +6,19 @@
 #include "xdg-decoration-unstable-v1-server-protocol.h"
 #include "xdg-shell-server-protocol.h"
 
+#include <fcntl.h>
 #include <linux/input-event-codes.h>
+#include <poll.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <wayland-client-core.h>
 #include <wayland-server.h>
 
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -47,6 +52,15 @@ void require(bool condition, const char *description)
         throw std::runtime_error(description);
 }
 
+//! What the client has done with the selection, as the compositor saw it.
+struct ClipboardRequests
+{
+    uint32_t serial = 0;
+    std::vector<std::string> mimes;
+    int selections = 0;
+    bool sourceAlive = false;
+};
+
 struct Requests
 {
     int minimizes = 0;
@@ -70,7 +84,7 @@ class Compositor
 {
   public:
     explicit Compositor(bool decorations = false, uint32_t chosenMode = ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE,
-                        bool capture = false)
+                        bool capture = false, bool clipboard = false)
         : chosenMode_(chosenMode)
     {
         display_ = wl_display_create();
@@ -84,6 +98,8 @@ class Compositor
         wl_global_create(display_, &xdg_wm_base_interface, 1, this, bindShell);
         if (decorations)
             wl_global_create(display_, &zxdg_decoration_manager_v1_interface, 1, this, bindDecorations);
+        if (clipboard)
+            wl_global_create(display_, &wl_data_device_manager_interface, 3, this, bindDataDeviceManager);
         if (capture)
         {
             wl_global_create(display_, &zwp_pointer_constraints_v1_interface, 1, this, bindConstraints);
@@ -199,6 +215,72 @@ class Compositor
                 wl_seat_send_capabilities(seat_, 0);
             });
     }
+    ClipboardRequests clipboard()
+    {
+        return invoke(
+            [this]
+            {
+                return clipboard_;
+            });
+    }
+
+    //! Another client takes the selection: announced to this client as an offer with these types.
+    void offerSelection(std::string text, std::vector<std::string> mimes = {"text/plain;charset=utf-8", "text/plain"})
+    {
+        invoke(
+            [this, text = std::move(text), mimes = std::move(mimes)]() mutable
+            {
+                require(dataDevice_, "a data device exists");
+                offeredText_ = std::move(text);
+                wl_resource *offer =
+                    wl_resource_create(wl_resource_get_client(dataDevice_), &wl_data_offer_interface, 1, 0);
+                wl_resource_set_implementation(offer, &offerImplementation(), this, nullptr);
+                wl_data_device_send_data_offer(dataDevice_, offer);
+                for (const std::string &mime : mimes)
+                    wl_data_offer_send_offer(offer, mime.c_str());
+                wl_data_device_send_selection(dataDevice_, offer);
+            });
+    }
+    void clearSelection()
+    {
+        invoke(
+            [this]
+            {
+                require(dataDevice_, "a data device exists");
+                wl_data_device_send_selection(dataDevice_, nullptr);
+            });
+    }
+    //! Another client asks for the text this client set. The read end of the pipe is returned, or -1 when it is
+    //! closed on the spot, which is a reader that went away.
+    int requestFromClient(const std::string &mime, bool closeReaderAtOnce = false)
+    {
+        return invoke(
+            [this, mime, closeReaderAtOnce]
+            {
+                require(selectionSource_, "the client has a selection source");
+                int ends[2];
+                require(pipe2(ends, O_CLOEXEC) == 0, "create pipe");
+                wl_data_source_send_send(selectionSource_, mime.c_str(), ends[1]);
+                ::close(ends[1]);
+                if (closeReaderAtOnce)
+                {
+                    ::close(ends[0]);
+                    return -1;
+                }
+                return ends[0];
+            });
+    }
+    void cancelClientSource()
+    {
+        invoke(
+            [this]
+            {
+                require(selectionSource_, "the client has a selection source");
+                wl_data_source_send_cancelled(selectionSource_);
+                selectionSource_ = nullptr;
+                clipboard_.sourceAlive = false;
+            });
+    }
     void removeSeat()
     {
         invoke(
@@ -257,6 +339,11 @@ class Compositor
     wl_resource *toplevel_ = nullptr;
     wl_resource *decoration_ = nullptr;
     wl_resource *relative_ = nullptr;
+    wl_resource *dataDevice_ = nullptr;
+    wl_resource *selectionSource_ = nullptr;
+    std::vector<std::string> pendingMimes_;
+    std::string offeredText_;
+    ClipboardRequests clipboard_;
     bool initialConfigure_ = false;
     uint32_t configureSerial_ = 1;
     uint32_t chosenMode_;
@@ -499,6 +586,102 @@ class Compositor
         };
         auto *resource =
             wl_resource_create(client, &zwp_relative_pointer_manager_v1_interface, static_cast<int>(version), id);
+        wl_resource_set_implementation(resource, &impl, data, nullptr);
+    }
+
+    static const struct wl_data_offer_interface &offerImplementation()
+    {
+        static const struct wl_data_offer_interface impl = {
+            .accept =
+                [](wl_client *, wl_resource *, uint32_t, const char *)
+            {
+            },
+            .receive =
+                [](wl_client *, wl_resource *resource, const char *, int32_t fd)
+            {
+                const std::string &text = owner(resource).offeredText_;
+                size_t done = 0;
+                while (done < text.size())
+                {
+                    const ssize_t written = write(fd, text.data() + done, text.size() - done);
+                    if (written <= 0)
+                        break;
+                    done += static_cast<size_t>(written);
+                }
+                ::close(fd);
+            },
+            .destroy = destroy,
+            .finish =
+                [](wl_client *, wl_resource *)
+            {
+            },
+            .set_actions =
+                [](wl_client *, wl_resource *, uint32_t, uint32_t)
+            {
+            },
+        };
+        return impl;
+    }
+
+    static void bindDataDeviceManager(wl_client *client, void *data, uint32_t version, uint32_t id)
+    {
+        static const struct wl_data_device_manager_interface impl = {
+            .create_data_source =
+                [](wl_client *client, wl_resource *resource, uint32_t id)
+            {
+                static const struct wl_data_source_interface sourceImpl = {
+                    .offer =
+                        [](wl_client *, wl_resource *resource, const char *mime)
+                    {
+                        owner(resource).pendingMimes_.emplace_back(mime);
+                    },
+                    .destroy =
+                        [](wl_client *, wl_resource *resource)
+                    {
+                        auto &self = owner(resource);
+                        if (self.selectionSource_ == resource)
+                        {
+                            self.selectionSource_ = nullptr;
+                            self.clipboard_.sourceAlive = false;
+                        }
+                        wl_resource_destroy(resource);
+                    },
+                    .set_actions =
+                        [](wl_client *, wl_resource *, uint32_t)
+                    {
+                    },
+                };
+                auto &self = owner(resource);
+                self.pendingMimes_.clear();
+                wl_resource *source = wl_resource_create(client, &wl_data_source_interface, 1, id);
+                wl_resource_set_implementation(source, &sourceImpl, &self, nullptr);
+            },
+            .get_data_device =
+                [](wl_client *client, wl_resource *resource, uint32_t id, wl_resource *)
+            {
+                static const struct wl_data_device_interface deviceImpl = {
+                    .start_drag =
+                        [](wl_client *, wl_resource *, wl_resource *, wl_resource *, wl_resource *, uint32_t)
+                    {
+                    },
+                    .set_selection =
+                        [](wl_client *, wl_resource *resource, wl_resource *source, uint32_t serial)
+                    {
+                        auto &self = owner(resource);
+                        self.selectionSource_ = source;
+                        self.clipboard_.serial = serial;
+                        self.clipboard_.mimes = self.pendingMimes_;
+                        self.clipboard_.sourceAlive = source != nullptr;
+                        ++self.clipboard_.selections;
+                    },
+                    .release = destroy,
+                };
+                auto &self = owner(resource);
+                self.dataDevice_ = wl_resource_create(client, &wl_data_device_interface, 1, id);
+                wl_resource_set_implementation(self.dataDevice_, &deviceImpl, &self, nullptr);
+            },
+        };
+        auto *resource = wl_resource_create(client, &wl_data_device_manager_interface, static_cast<int>(version), id);
         wl_resource_set_implementation(resource, &impl, data, nullptr);
     }
 
@@ -889,6 +1072,127 @@ void testCaptureWithoutProtocols()
           "a compositor without pointer constraints still just hides the cursor");
     window->destroy();
 }
+
+//! What another client reads from the pipe it was given. It is another process in life; here it is a thread, because
+//! this one has to keep dispatching: the window writes into the pipe from its event handler.
+std::string drain(wma::IWindowManager &window, int fd)
+{
+    std::string text;
+    if (fd < 0)
+        return text;
+
+    std::atomic<bool> finished{false};
+    std::thread reader(
+        [&text, &finished, fd]
+        {
+            char buffer[65536];
+            for (;;)
+            {
+                const ssize_t count = read(fd, buffer, sizeof buffer);
+                if (count <= 0)
+                    break;
+                text.append(buffer, static_cast<size_t>(count));
+            }
+            finished = true;
+        });
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (!finished && std::chrono::steady_clock::now() < deadline)
+        window.waitEvents(2);
+
+    //! A reader still blocked after the deadline is released by closing its pipe, so the test fails rather than hangs.
+    if (!finished)
+        ::close(fd);
+    reader.join();
+    if (finished)
+        ::close(fd);
+    return text;
+}
+
+void testClipboard()
+{
+    Compositor server(false, ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE, false, true);
+    auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, {});
+    window->createWindow("clipboard");
+    sync(*window);
+
+    check(window->isClipboardSupported(), "a compositor with a data device manager gives the window a clipboard");
+    check(window->getClipboardText().empty(), "an unset clipboard reads as empty");
+    check(!window->setClipboardText("too early") && server.clipboard().selections == 0,
+          "a selection without a recent input event is not requested: the compositor would only ignore it");
+
+    //! A button press is the input event whose serial authorizes the request.
+    server.enter();
+    server.button(77, WL_POINTER_BUTTON_STATE_PRESSED);
+    sync(*window);
+
+    const std::string ours = "caf\xC3\xA9 \xE2\x9C\x93";
+    check(window->setClipboardText(ours), "after a press, setting the clipboard is requested");
+    sync(*window);
+    const ClipboardRequests first = server.clipboard();
+    check(first.selections == 1 && first.serial == 77 && first.sourceAlive,
+          "with the serial of that press, as one source");
+    auto offered = [&first](const char *mime)
+    {
+        return std::find(first.mimes.begin(), first.mimes.end(), mime) != first.mimes.end();
+    };
+    check(offered("text/plain;charset=utf-8") && offered("UTF8_STRING") && offered("text/plain"),
+          "offered as the text types other clients ask for");
+    check(window->getClipboardText() == ours, "this window reads back what it set");
+
+    check(drain(*window, server.requestFromClient("text/plain;charset=utf-8")) == ours,
+          "another client asking for it through the pipe gets the text, byte for byte");
+    check(drain(*window, server.requestFromClient("image/png")).empty(),
+          "and a type it never offered gets nothing, with the pipe closed");
+
+    server.button(78, WL_POINTER_BUTTON_STATE_PRESSED);
+    sync(*window);
+    check(window->setClipboardText("second") && drain(*window, server.requestFromClient("UTF8_STRING")) == "second",
+          "a later set replaces the first, and is the one served");
+    check(server.clipboard().serial == 78 && server.clipboard().selections == 2, "with the later press's serial");
+
+    const std::string large(2 << 20, 'x');
+    check(window->setClipboardText(large) && drain(*window, server.requestFromClient("text/plain")) == large,
+          "two megabytes go through the pipe in pieces, while the other client reads");
+
+    //! The reader gives up before the text is written: a write to a closed pipe must not end this process.
+    check(window->setClipboardText(large), "set again for the reader that leaves");
+    sync(*window);
+    (void)server.requestFromClient("text/plain", true);
+    sync(*window);
+    check(window->getClipboardText() == large, "a reader that vanished mid-transfer does not take this process down");
+
+    server.cancelClientSource();
+    sync(*window);
+    check(window->getClipboardText().empty(),
+          "once another client holds the selection, this window no longer serves it");
+
+    server.offerSelection("from the compositor \xE2\x9C\x93");
+    sync(*window);
+    check(window->getClipboardText() == "from the compositor \xE2\x9C\x93", "and reads the text that client set");
+
+    server.offerSelection(std::string(1 << 20, 'y'));
+    sync(*window);
+    check(window->getClipboardText() == std::string(1 << 20, 'y'), "including a megabyte of it");
+
+    server.offerSelection("a picture", {"image/png"});
+    sync(*window);
+    check(window->getClipboardText().empty(), "a selection with no text type reads as empty");
+
+    server.offerSelection("legacy", {"STRING"});
+    sync(*window);
+    check(window->getClipboardText() == "legacy", "a client that only offers STRING is still read");
+
+    server.clearSelection();
+    sync(*window);
+    check(window->getClipboardText().empty(), "a cleared selection reads as empty");
+
+    server.removeSeat();
+    sync(*window);
+    check(!window->isClipboardSupported() && !window->setClipboardText("no seat"),
+          "without a seat there is no clipboard, and no serial to authorize one");
+}
+
 } // namespace
 
 int main()
@@ -903,6 +1207,7 @@ int main()
         testMovesAndSeatRemoval();
         testPointerCapture();
         testCaptureWithoutProtocols();
+        testClipboard();
     }
     catch (const std::exception &error)
     {

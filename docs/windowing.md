@@ -162,6 +162,27 @@ const f32 scale = window->getContentScale();                      // the display
 UI that should look the same size on every display is `logical / getContentScale()` units wide, drawn
 `pixels / logical * getContentScale()` pixels to the unit.
 
+## Clipboard
+
+```cpp
+if (window->isClipboardSupported()) {
+    window->setClipboardText("copied");              // false: not taken
+    const std::string text = window->getClipboardText();  // "" when empty or unreadable
+}
+```
+
+Call both on the event thread, from the handler of the key or button press that asked for it.
+
+| Backend | Notes |
+|---|---|
+| SDL3, GLFW | The platform's own clipboard. |
+| Native X11 | `CLIPBOARD`: `UTF8_STRING`, `text/plain`, `TEXT`, and Latin-1 `STRING` for old clients. Reads large text in chunks (INCR); sends one reply, so text over what one request carries is not offered. |
+| Native Wayland | `wl_data_device`. `setClipboardText()` is `false` until the seat has delivered a key or button press: the compositor only accepts a selection with that event's serial. |
+
+Text over 16 MiB is not read. Reading waits about half a second for another application to answer and gives up on a transfer that takes over two seconds. The
+window must keep calling `pollEvents()` for as long as the text it set should stay available to other applications.
+Where `isClipboardSupported()` is `false`, keep a clipboard of your own.
+
 ## Software rendering
 
 With `GraphicsAPI::CPU`:

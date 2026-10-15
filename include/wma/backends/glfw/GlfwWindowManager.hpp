@@ -57,6 +57,9 @@ class GlfwWindowManager : public IWindowManager
     KeyboardListener &getKeyboardListener() noexcept override;
     void setTextInputEnabled(bool enabled) noexcept override;
     [[nodiscard]] bool isTextInputEnabled() const noexcept override;
+    [[nodiscard]] bool isClipboardSupported() const noexcept override;
+    [[nodiscard]] std::string getClipboardText() override;
+    bool setClipboardText(std::string_view text) override;
     MouseListener &getMouseListener() noexcept override;
     bool shouldClose() const override;
     WindowBackend getBackendType() const override;

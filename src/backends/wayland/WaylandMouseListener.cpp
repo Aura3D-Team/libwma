@@ -254,6 +254,8 @@ void WaylandMouseListener::handleButton(u32 serial, u32, u32 button, u32 state)
     const i32 unifiedButton = convertButton(button);
     if (state == WL_POINTER_BUTTON_STATE_PRESSED)
     {
+        if (owner_)
+            owner_->inputSerial_ = serial;
         if (button == BTN_LEFT)
         {
             //! Assigned, not just set: a claim whose release the compositor took

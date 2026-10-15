@@ -2,6 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.8.0]
+
+### Added
+
+- `IWindowManager::isClipboardSupported()`, `getClipboardText()` and `setClipboardText()`: the system clipboard as UTF-8 text. SDL3 and GLFW use the platform's own; native X11 owns and reads the `CLIPBOARD` selection, including text sent in chunks; native Wayland uses `wl_data_device`, taking the serial of the latest key or button press from the events it delivers. A custom `WaylandSurfaceRole` gets it too, since it shares the same window manager.
+
 ## [0.7.1]
 
 ### Fixed

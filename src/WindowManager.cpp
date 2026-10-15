@@ -107,4 +107,19 @@ const char *getLibraryInfo() noexcept
     return info;
 }
 
+bool IWindowManager::isClipboardSupported() const noexcept
+{
+    return false;
+}
+
+std::string IWindowManager::getClipboardText()
+{
+    return {};
+}
+
+bool IWindowManager::setClipboardText(std::string_view)
+{
+    return false;
+}
+
 } // namespace wma

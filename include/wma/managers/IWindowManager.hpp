@@ -3,6 +3,8 @@
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "../core/Types.hpp"
@@ -323,6 +325,23 @@ class IWindowManager
     {
         return false;
     }
+
+    /**
+     * @brief The system clipboard, as UTF-8 text.
+     *
+     * Call on the event thread, from the handler of the input that asked for it: a Wayland selection is only accepted
+     * with the serial of a recent key or button press, which the backend takes from the events it has delivered.
+     *
+     * Where the backend has no clipboard (the default) this is false, getClipboardText() is empty and
+     * setClipboardText() returns false -- the cue for a caller to keep a clipboard of its own.
+     */
+    [[nodiscard]] virtual bool isClipboardSupported() const noexcept;
+
+    //! Empty when the clipboard holds no text, or its owner did not answer within a fraction of a second.
+    [[nodiscard]] virtual std::string getClipboardText();
+
+    //! True when the platform took the text. It stays readable by other applications while this one runs.
+    virtual bool setClipboardText(std::string_view text);
 
   protected:
     TouchListener inertTouchListener_;

@@ -415,6 +415,27 @@ bool GlfwWindowManager::isTextInputEnabled() const noexcept
 {
     return keyboardListener_ && keyboardListener_->isTextInputEnabled();
 }
+
+bool GlfwWindowManager::isClipboardSupported() const noexcept
+{
+    return window_ != nullptr;
+}
+
+std::string GlfwWindowManager::getClipboardText()
+{
+    //! Valid only until the next clipboard call, and null when the clipboard holds no text.
+    const char *text = window_ ? glfwGetClipboardString(window_) : nullptr;
+    return text ? std::string{text} : std::string{};
+}
+
+bool GlfwWindowManager::setClipboardText(std::string_view text)
+{
+    if (!window_ || text.find('\0') != std::string_view::npos)
+        return false;
+
+    glfwSetClipboardString(window_, std::string{text}.c_str());
+    return true;
+}
 MouseListener &GlfwWindowManager::getMouseListener() noexcept
 {
     return *mouseListener_;

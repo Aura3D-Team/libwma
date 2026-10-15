@@ -14,6 +14,15 @@ endif()
 add_test(NAME wma_test_content_scale COMMAND wma_test_content_scale)
 set_tests_properties(wma_test_content_scale PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
 
+# The clipboard on the backends that delegate it to the platform. SDL's dummy driver needs no display.
+if(WMA_ENABLE_SDL)
+    add_executable(wma_test_sdl_clipboard test_backend_clipboard.cpp)
+    target_link_libraries(wma_test_sdl_clipboard PRIVATE wma)
+    target_compile_definitions(wma_test_sdl_clipboard PRIVATE WMA_TEST_BACKEND_SDL)
+    add_test(NAME wma_test_sdl_clipboard COMMAND wma_test_sdl_clipboard)
+    set_tests_properties(wma_test_sdl_clipboard PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+endif()
+
 # Threaded, unlike the decoder tests: MixCallbackSlot exists to make
 # setMixCallback() safe on a running device, and only two threads can show that.
 # Worth running under -fsanitize=thread, which is what turns a missed
@@ -61,6 +70,8 @@ if(WMA_ENABLE_WAYLAND)
     endif()
 endif()
 
+# One X server serves all of them, and what they check (a window's pixels, the segments on the system) is disturbed by
+# another test's window, so each takes the same lock: ctest -j never runs two together.
 # These open windows, grab the pointer and inject input, so they only run against a
 # disposable X server named by WMA_TEST_DISPLAY -- never the desktop's $DISPLAY.
 # Without it they report skipped (77) rather than failing a headless build.
@@ -68,21 +79,33 @@ if(WMA_ENABLE_X11)
     add_executable(wma_test_x11_cpu_present test_x11_cpu_present.cpp)
     target_link_libraries(wma_test_x11_cpu_present PRIVATE wma)
     add_test(NAME wma_test_x11_cpu_present COMMAND wma_test_x11_cpu_present)
-    set_tests_properties(wma_test_x11_cpu_present PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+    set_tests_properties(wma_test_x11_cpu_present PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77 RESOURCE_LOCK wma_test_display)
+
+    # xclip stands in for another application; without it only the checks that need no second client run.
+    add_executable(wma_test_x11_clipboard test_x11_clipboard.cpp)
+    target_link_libraries(wma_test_x11_clipboard PRIVATE wma)
+    add_test(NAME wma_test_x11_clipboard COMMAND wma_test_x11_clipboard)
+    set_tests_properties(wma_test_x11_clipboard PROPERTIES TIMEOUT 120 SKIP_RETURN_CODE 77 RESOURCE_LOCK wma_test_display)
 
     if(TARGET X11::Xtst)
         add_executable(wma_test_x11_mouse_capture test_x11_mouse_capture.cpp)
         target_link_libraries(wma_test_x11_mouse_capture PRIVATE wma X11::Xtst)
         add_test(NAME wma_test_x11_mouse_capture COMMAND wma_test_x11_mouse_capture)
-        set_tests_properties(wma_test_x11_mouse_capture PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+        set_tests_properties(wma_test_x11_mouse_capture PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77 RESOURCE_LOCK wma_test_display)
     endif()
 endif()
 
 # The size and scale GlfwWindowManager keeps are the ones GLFW reported. Needs a display; WMA_TEST_DISPLAY names a
 # disposable X server, and without it this reports skipped (77).
 if(WMA_ENABLE_GLFW)
+    add_executable(wma_test_glfw_clipboard test_backend_clipboard.cpp)
+    target_link_libraries(wma_test_glfw_clipboard PRIVATE wma)
+    target_compile_definitions(wma_test_glfw_clipboard PRIVATE WMA_TEST_BACKEND_GLFW)
+    add_test(NAME wma_test_glfw_clipboard COMMAND wma_test_glfw_clipboard)
+    set_tests_properties(wma_test_glfw_clipboard PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77 RESOURCE_LOCK wma_test_display)
+
     add_executable(wma_test_glfw_metrics test_glfw_metrics.cpp)
     target_link_libraries(wma_test_glfw_metrics PRIVATE wma glfw)
     add_test(NAME wma_test_glfw_metrics COMMAND wma_test_glfw_metrics)
-    set_tests_properties(wma_test_glfw_metrics PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+    set_tests_properties(wma_test_glfw_metrics PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77 RESOURCE_LOCK wma_test_display)
 endif()

@@ -62,6 +62,9 @@ class SdlWindowManager : public IWindowManager
     TouchListener &getTouchListener() noexcept override;
     void setTextInputEnabled(bool enabled) noexcept override;
     [[nodiscard]] bool isTextInputEnabled() const noexcept override;
+    [[nodiscard]] bool isClipboardSupported() const noexcept override;
+    [[nodiscard]] std::string getClipboardText() override;
+    bool setClipboardText(std::string_view text) override;
     bool shouldClose() const override;
     WindowBackend getBackendType() const override;
     GraphicsAPI getGraphicsAPI() const override;

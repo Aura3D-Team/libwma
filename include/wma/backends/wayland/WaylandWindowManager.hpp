@@ -15,6 +15,8 @@
 namespace wma
 {
 
+class WaylandClipboard;
+
 class WaylandWindowManager : public IWindowManager
 {
   public:
@@ -51,6 +53,9 @@ class WaylandWindowManager : public IWindowManager
     KeyboardListener &getKeyboardListener() noexcept override;
     void setTextInputEnabled(bool enabled) noexcept override;
     [[nodiscard]] bool isTextInputEnabled() const noexcept override;
+    [[nodiscard]] bool isClipboardSupported() const noexcept override;
+    [[nodiscard]] std::string getClipboardText() override;
+    bool setClipboardText(std::string_view text) override;
     MouseListener &getMouseListener() noexcept override;
     bool minimize() noexcept override;
     bool maximize() noexcept override;
@@ -106,6 +111,11 @@ class WaylandWindowManager : public IWindowManager
 
     wl_keyboard *keyboard_;
     wl_pointer *pointer_;
+
+    //! The serial of the latest key or button press the seat delivered: the only thing that authorizes a selection.
+    u32 inputSerial_ = 0;
+    //! Heap-allocated so its protocol objects, whose user data point at it, are unaffected by this manager moving.
+    std::unique_ptr<WaylandClipboard> clipboard_;
 
     //! Software rendering (GraphicsAPI::CPU) via wl_shm, double-buffered: writing into
     //! one slot while the compositor may still be reading the other is what a single

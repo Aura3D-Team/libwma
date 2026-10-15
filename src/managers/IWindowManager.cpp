@@ -9,6 +9,11 @@
 namespace wma
 {
 
+bool IWindowManager::presentWaitsForDisplay() const noexcept
+{
+    return false;
+}
+
 #ifdef __EMSCRIPTEN__
 
 //! On the web a blocking while-loop starves the browser event loop; instead the
@@ -65,7 +70,13 @@ void IWindowManager::process(std::function<void()> &&actions)
 void IWindowManager::process(std::function<void()> &&actions)
 {
     FrameTimer timer(*getWindowFlags());
-    timer.setTargetFPS(static_cast<u32>(getWindowDetails()->targetFPS < 0 ? 0 : getWindowDetails()->targetFPS));
+    const WindowDetails &details = *getWindowDetails();
+    u32 targetFPS = static_cast<u32>(details.targetFPS < 0 ? 0 : details.targetFPS);
+    //! Vsync is a promise that the loop will not spin: honour it where the present cannot.
+    constexpr u32 kUnpacedVsyncFPS = 60;
+    if (targetFPS == 0 && details.vsync && getGraphicsAPI() == GraphicsAPI::CPU && !presentWaitsForDisplay())
+        targetFPS = kUnpacedVsyncFPS;
+    timer.setTargetFPS(targetFPS);
 
     while (!shouldClose())
     {

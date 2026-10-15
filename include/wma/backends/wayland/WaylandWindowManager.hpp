@@ -47,6 +47,7 @@ class WaylandWindowManager : public IWindowManager
     SoftwareFramebuffer lockFramebuffer() override;
     FramebufferSize getFramebufferSize() noexcept override;
     void presentFramebuffer() override;
+    [[nodiscard]] bool presentWaitsForDisplay() const noexcept override;
     WindowFlags *getWindowFlags() noexcept override;
     const WindowDetails *getWindowDetails() noexcept override;
     const std::vector<const char *> getVulkanExtensions() const override;

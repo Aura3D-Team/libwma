@@ -203,6 +203,10 @@ if (fb.valid()) {
 Pixels are 32-bit; channel order is backend-defined. Always go through `pitch`,
 never `width * 4`.
 
+With `WindowDetails::vsync`, `presentWaitsForDisplay()` says whether the present
+is held to the refresh (Wayland, SDL3). Where it is not, `process()` caps the
+loop at 60 Hz; a loop of your own needs its own limit.
+
 ## Errors
 
 Everything derives from `wma::WMAException`. Catch most-derived first:

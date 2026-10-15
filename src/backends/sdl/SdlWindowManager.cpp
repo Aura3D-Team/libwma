@@ -151,6 +151,9 @@ void SdlWindowManager::createWindow(const char *windowName)
         SDL_GL_SetSwapInterval(windowDetails_.vsync ? 1 : 0);
     }
 
+    if (graphicsAPI_ == GraphicsAPI::CPU)
+        surfaceVsync_ = windowDetails_.vsync && SDL_SetWindowSurfaceVSync(window_, 1);
+
 #ifdef __APPLE__
     if (graphicsAPI_ == GraphicsAPI::Metal)
     {
@@ -359,8 +362,9 @@ bool SdlWindowManager::waitUntilWindowReady()
 
 #ifdef __ANDROID__
     using namespace std::chrono_literals;
-    constexpr int kMaxAttempts = 100;       // ~5s at 50ms, then give up rather than hang
-    constexpr int kRequiredStablePolls = 4; // ~200ms unchanged before trusting it
+    // Short polls: this runs while the screen is blank, so each stable poll is a visible delay on resume.
+    constexpr int kMaxAttempts = 300;       // ~5s at 16ms, then give up rather than hang
+    constexpr int kRequiredStablePolls = 5; // ~80ms unchanged before trusting it
 
     int stablePolls = 0;
     void *lastNativeWindow = nullptr;
@@ -401,7 +405,7 @@ bool SdlWindowManager::waitUntilWindowReady()
         lastNativeWindow = usable ? nativeWindow : nullptr;
         lastW = usable ? w : -1;
         lastH = usable ? h : -1;
-        std::this_thread::sleep_for(50ms);
+        std::this_thread::sleep_for(16ms);
     }
     return false;
 #else
@@ -442,6 +446,11 @@ SoftwareFramebuffer SdlWindowManager::lockFramebuffer()
         SDL_LockSurface(surface);
 
     return SoftwareFramebuffer{surface->pixels, surface->w, surface->h, surface->pitch};
+}
+
+bool SdlWindowManager::presentWaitsForDisplay() const noexcept
+{
+    return surfaceVsync_;
 }
 
 void SdlWindowManager::presentFramebuffer()

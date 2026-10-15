@@ -2,6 +2,17 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.8.1]
+
+### Added
+
+- `IWindowManager::presentWaitsForDisplay()`: whether a CPU window's present is held to the display's refresh.
+
+### Fixed
+
+- A CPU window with `WindowDetails::vsync` ran uncapped. SDL3 now asks for a vsynced window surface; where the present cannot wait (native X11), `process()` paces the loop at 60 Hz.
+- `SdlWindowManager::waitUntilWindowReady()` waited at least 200 ms for Android's surface to settle, all of it a blank screen on resume; it polls every 16 ms and settles after about 80 ms.
+
 ## [0.8.0]
 
 ### Added

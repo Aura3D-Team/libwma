@@ -593,6 +593,12 @@ void WaylandWindowManager::presentFramebuffer()
     lockedSlot_ = nullptr;
 }
 
+bool WaylandWindowManager::presentWaitsForDisplay() const noexcept
+{
+    //! The next frame is refused until the compositor's frame callback arrives.
+    return true;
+}
+
 const std::vector<const char *> WaylandWindowManager::getVulkanExtensions() const
 {
     return {"VK_KHR_surface", "VK_KHR_wayland_surface"};

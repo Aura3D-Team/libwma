@@ -238,6 +238,10 @@ class IWindowManager
     {
     }
 
+    //! CPU windows with WindowDetails::vsync set: whether presentFramebuffer() is held to the display's refresh.
+    //! When it is not, process() paces the loop at 60 Hz instead of running it uncapped.
+    [[nodiscard]] virtual bool presentWaitsForDisplay() const noexcept;
+
     /**
      * @brief The window's drawable size in pixels.
      *

@@ -26,8 +26,11 @@ constexpr std::array<const char *, 5> kOffered{"text/plain;charset=utf-8", "text
 constexpr std::array<const char *, 5> kPreferred{"text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "TEXT",
                                                  "STRING"};
 
-//! How long another client may go without sending a byte before it is given up on.
-constexpr auto kIdleTimeout = std::chrono::seconds(1);
+//! How long another client may go without moving a byte before it is given up on.
+constexpr auto kIdleTimeout = std::chrono::milliseconds(500);
+
+//! A transfer that keeps trickling is cut off here: both directions run on the event thread.
+constexpr auto kTransferLimit = std::chrono::seconds(2);
 
 //! A clipboard is text a person copied; past this it is refused rather than read into memory.
 constexpr usize kMaxBytes = usize{16} << 20;
@@ -50,8 +53,9 @@ void writeAll(int fd, std::string_view text)
     pthread_sigmask(SIG_BLOCK, &pipeSignal, &previous);
 
     bool brokenPipe = false;
+    const Clock::time_point limit = Clock::now() + kTransferLimit;
     Clock::time_point deadline = Clock::now() + kIdleTimeout;
-    while (!text.empty() && Clock::now() < deadline)
+    while (!text.empty() && Clock::now() < std::min(deadline, limit))
     {
         const ssize_t written = write(fd, text.data(), text.size());
         if (written > 0)
@@ -220,13 +224,18 @@ std::string WaylandClipboard::receive(wl_data_offer *offer, const char *mime)
     wl_display_flush(display_);
 
     std::string result;
+    const Clock::time_point limit = Clock::now() + kTransferLimit;
     Clock::time_point deadline = Clock::now() + kIdleTimeout;
     bool complete = false;
-    while (Clock::now() < deadline)
+    while (Clock::now() < std::min(deadline, limit))
     {
-        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count();
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::min(deadline, limit) - Clock::now()).count();
         pollfd ready{pipeEnds[0], POLLIN, 0};
-        if (poll(&ready, 1, static_cast<int>(std::max<long>(remaining, 1))) <= 0)
+        const int polled = poll(&ready, 1, static_cast<int>(std::max<long>(remaining, 1)));
+        if (polled < 0 && errno != EINTR)
+            break;
+        if (polled <= 0)
             continue;
 
         std::array<char, 65536> buffer;

@@ -20,6 +20,9 @@ using Clock = std::chrono::steady_clock;
 //! How long an owner gets to answer, which is the longest a paste can stall the caller.
 constexpr auto kReplyTimeout = std::chrono::milliseconds(500);
 
+//! A chunked transfer that keeps trickling is cut off here.
+constexpr auto kTransferLimit = std::chrono::seconds(2);
+
 //! A clipboard is text a person copied; past this it is refused rather than read into memory.
 constexpr usize kMaxBytes = usize{16} << 20;
 
@@ -142,8 +145,9 @@ X11Clipboard::X11Clipboard(Display *display, Window window) : display_(display),
 
 X11Clipboard::~X11Clipboard()
 {
-    //! A selection owned by a window that is gone answers nobody, so it is given up rather than left dangling.
-    if (owned_)
+    //! Asked rather than trusted from owned_: a SelectionClear still queued means another client owns it now, and
+    //! giving up the selection would take theirs.
+    if (owned_ && XGetSelectionOwner(display_, clipboard_) == window_)
         XSetSelectionOwner(display_, clipboard_, None, CurrentTime);
 }
 
@@ -253,9 +257,10 @@ Atom X11Clipboard::propertyType() const noexcept
 bool X11Clipboard::readIncremental(std::string &out)
 {
     const Wanted wanted{window_, property_};
+    const Clock::time_point limit = Clock::now() + kTransferLimit;
     for (;;)
     {
-        Clock::time_point deadline = Clock::now() + kReplyTimeout;
+        const Clock::time_point deadline = std::min(Clock::now() + kReplyTimeout, limit);
         XEvent chunkEvent;
         while (!XCheckIfEvent(display_, &chunkEvent, isIncrementChunk,
                               reinterpret_cast<XPointer>(const_cast<Wanted *>(&wanted))))

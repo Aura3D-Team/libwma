@@ -94,6 +94,7 @@ class WaylandWindowManager : public IWindowManager
     [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
     //! pollEvents() and waitEvents() differ only by the poll timeout.
     void dispatch(int timeoutMs);
+    void waitForFrameCallback();
     wl_display *display_;
     wl_registry *registry_;
     wl_compositor *compositor_;

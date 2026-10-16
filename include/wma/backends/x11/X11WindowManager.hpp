@@ -55,6 +55,7 @@ class X11WindowManager : public IWindowManager
     [[nodiscard]] std::string getClipboardText() override;
     bool setClipboardText(std::string_view text) override;
     MouseListener &getMouseListener() noexcept override;
+    [[nodiscard]] u32 displayRefreshHz() const noexcept override;
     bool shouldClose() const override;
     WindowBackend getBackendType() const override;
     GraphicsAPI getGraphicsAPI() const override;

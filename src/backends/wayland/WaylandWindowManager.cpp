@@ -8,6 +8,8 @@
 #include "wma/backends/wayland/protocols/relative-pointer-unstable-v1-client-protocol.h"
 #include "wma/exceptions/WMAException.hpp"
 
+#include <chrono>
+
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
@@ -509,6 +511,24 @@ void WaylandWindowManager::swapBuffers()
         eglSwapBuffers(static_cast<EGLDisplay>(eglDisplay_), static_cast<EGLSurface>(eglSurface_));
     }
 #endif
+
+    if (graphicsAPI_ == GraphicsAPI::CPU)
+        waitForFrameCallback();
+}
+
+void WaylandWindowManager::waitForFrameCallback()
+{
+    //! A hidden or occluded surface gets no callbacks; the bound keeps such a window ticking, slowly, not frozen.
+    constexpr auto kLimit = std::chrono::milliseconds(100);
+    const auto deadline = std::chrono::steady_clock::now() + kLimit;
+    while (frameCallback_ && !windowShouldClose_)
+    {
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0)
+            break;
+        dispatch(static_cast<int>(remaining.count()));
+    }
 }
 
 void WaylandWindowManager::setupInputDevices()
@@ -595,7 +615,7 @@ void WaylandWindowManager::presentFramebuffer()
 
 bool WaylandWindowManager::presentWaitsForDisplay() const noexcept
 {
-    //! The next frame is refused until the compositor's frame callback arrives.
+    //! swapBuffers() waits for the frame callback, which the compositor sends at the output's pace.
     return true;
 }
 

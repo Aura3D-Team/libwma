@@ -19,6 +19,7 @@
 //! For XkbSetDetectableAutoRepeat; see createWindow().
 #include <X11/XKBlib.h>
 #include <X11/Xatom.h>
+#include <X11/extensions/Xrandr.h>
 
 #ifdef WMA_X11_HAS_GL
 #include <GL/glx.h>
@@ -733,6 +734,63 @@ void X11WindowManager::setTextInputEnabled(bool enabled) noexcept
 bool X11WindowManager::isTextInputEnabled() const noexcept
 {
     return keyboardListener_ && keyboardListener_->isTextInputEnabled();
+}
+
+u32 X11WindowManager::displayRefreshHz() const noexcept
+{
+    if (!display_)
+        return 0;
+
+    const Window root = DefaultRootWindow(display_);
+    XRRScreenResources *resources = XRRGetScreenResourcesCurrent(display_, root);
+    if (!resources)
+        return 0;
+
+    //! The monitor under the window's centre; failing that, the first one that is lit.
+    int centerX = 0;
+    int centerY = 0;
+    XWindowAttributes attributes{};
+    Window ignored = 0;
+    const bool placed = XGetWindowAttributes(display_, window_, &attributes) != 0 &&
+                        XTranslateCoordinates(display_, window_, root, attributes.width / 2, attributes.height / 2,
+                                              &centerX, &centerY, &ignored) != 0;
+
+    double hz = 0.0;
+    for (int index = 0; index < resources->ncrtc; ++index)
+    {
+        XRRCrtcInfo *crtc = XRRGetCrtcInfo(display_, resources, resources->crtcs[index]);
+        if (!crtc)
+            continue;
+
+        double rate = 0.0;
+        for (int mode = 0; crtc->mode != None && mode < resources->nmode; ++mode)
+        {
+            const XRRModeInfo &info = resources->modes[mode];
+            if (info.id != crtc->mode || info.hTotal == 0 || info.vTotal == 0)
+                continue;
+            //! dotClock / (pixels per frame); an interlaced mode scans half a frame per pass, a doublescan twice.
+            double lines = info.vTotal;
+            if (info.modeFlags & RR_DoubleScan)
+                lines *= 2.0;
+            if (info.modeFlags & RR_Interlace)
+                lines *= 0.5;
+            rate = static_cast<double>(info.dotClock) / (static_cast<double>(info.hTotal) * lines);
+        }
+
+        const bool under = placed && centerX >= crtc->x && centerY >= crtc->y &&
+                           centerX < crtc->x + static_cast<int>(crtc->width) &&
+                           centerY < crtc->y + static_cast<int>(crtc->height);
+        XRRFreeCrtcInfo(crtc);
+
+        if (rate <= 0.0)
+            continue;
+        if (hz <= 0.0 || under)
+            hz = rate;
+        if (under)
+            break;
+    }
+    XRRFreeScreenResources(resources);
+    return hz > 0.0 ? static_cast<u32>(hz + 0.5) : 0u;
 }
 
 bool X11WindowManager::isClipboardSupported() const noexcept

@@ -1,4 +1,5 @@
 #include "wma/backends/sdl/SdlWindowManager.hpp"
+#include "wma/core/FramePacing.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
 #include <ink/Inkogger.h>
@@ -151,8 +152,13 @@ void SdlWindowManager::createWindow(const char *windowName)
         SDL_GL_SetSwapInterval(windowDetails_.vsync ? 1 : 0);
     }
 
-    if (graphicsAPI_ == GraphicsAPI::CPU)
-        surfaceVsync_ = windowDetails_.vsync && SDL_SetWindowSurfaceVSync(window_, 1);
+    if (graphicsAPI_ == GraphicsAPI::CPU && windowDetails_.vsync)
+    {
+        surfaceVsync_ = SDL_SetWindowSurfaceVSync(window_, 1);
+        if (!surfaceVsync_)
+            INK_WARN << "[wma] SDL cannot vsync the window surface (" << SDL_GetError() << "); pacing at "
+                     << detail::kUnpacedVsyncFPS << " Hz instead";
+    }
 
 #ifdef __APPLE__
     if (graphicsAPI_ == GraphicsAPI::Metal)

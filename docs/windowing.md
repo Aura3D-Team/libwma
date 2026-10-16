@@ -203,9 +203,11 @@ if (fb.valid()) {
 Pixels are 32-bit; channel order is backend-defined. Always go through `pitch`,
 never `width * 4`.
 
-With `WindowDetails::vsync`, `presentWaitsForDisplay()` says whether the present
-is held to the refresh (Wayland, SDL3). Where it is not, `process()` caps the
-loop at 60 Hz; a loop of your own needs its own limit.
+With `WindowDetails::vsync` and `targetFPS = 0`, `presentWaitsForDisplay()` says whether the present
+blocks until the refresh (Wayland, SDL3 when it accepts a vsynced surface). Where it does not (X11),
+`process()` caps the loop at `displayRefreshHz()` (60 where unknown). That is a rate limit, not vsync: frames can
+still tear. Set `targetFPS` for another rate. On Wayland
+`swapBuffers()` is the wait, so a loop of your own that calls it is paced too; a hidden window waits at most 100 ms.
 
 ## Errors
 

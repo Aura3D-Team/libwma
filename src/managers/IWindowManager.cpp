@@ -1,5 +1,6 @@
 #include "wma/managers/IWindowManager.hpp"
 #include "wma/core/FrameTimer.hpp"
+#include "wma/core/FramePacing.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -12,6 +13,11 @@ namespace wma
 bool IWindowManager::presentWaitsForDisplay() const noexcept
 {
     return false;
+}
+
+u32 IWindowManager::displayRefreshHz() const noexcept
+{
+    return 0;
 }
 
 #ifdef __EMSCRIPTEN__
@@ -71,12 +77,7 @@ void IWindowManager::process(std::function<void()> &&actions)
 {
     FrameTimer timer(*getWindowFlags());
     const WindowDetails &details = *getWindowDetails();
-    u32 targetFPS = static_cast<u32>(details.targetFPS < 0 ? 0 : details.targetFPS);
-    //! Vsync is a promise that the loop will not spin: honour it where the present cannot.
-    constexpr u32 kUnpacedVsyncFPS = 60;
-    if (targetFPS == 0 && details.vsync && getGraphicsAPI() == GraphicsAPI::CPU && !presentWaitsForDisplay())
-        targetFPS = kUnpacedVsyncFPS;
-    timer.setTargetFPS(targetFPS);
+    timer.setTargetFPS(detail::effectiveTargetFPS(details, getGraphicsAPI(), presentWaitsForDisplay(), displayRefreshHz()));
 
     while (!shouldClose())
     {

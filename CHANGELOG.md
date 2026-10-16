@@ -6,11 +6,11 @@ All notable changes to libwma are documented in this file.
 
 ### Added
 
-- `IWindowManager::presentWaitsForDisplay()`: whether a CPU window's present is held to the display's refresh.
+- `IWindowManager::presentWaitsForDisplay()`: whether a CPU window's present is held to the display's refresh. `displayRefreshHz()`: the rate of the display the window is on, where the backend can tell.
 
 ### Fixed
 
-- A CPU window with `WindowDetails::vsync` ran uncapped. SDL3 now asks for a vsynced window surface; where the present cannot wait (native X11), `process()` paces the loop at 60 Hz.
+- A CPU window with `WindowDetails::vsync` ran uncapped. SDL3 now asks for a vsynced window surface; where the present cannot wait (native X11), `process()` caps the loop at the display's refresh rate (60 Hz where unknown), a limit that does not prevent tearing. X11 reads it through XRandR, so libXrandr is now a dependency of that backend. On Wayland, `swapBuffers()` of a CPU window now waits (up to 100 ms) for the compositor's frame callback: the present refused frames but the loop around it spun. SDL3 logs a warning when the surface cannot be vsynced.
 - `SdlWindowManager::waitUntilWindowReady()` waited at least 200 ms for Android's surface to settle, all of it a blank screen on resume; it polls every 16 ms and settles after about 80 ms.
 
 ## [0.8.0]

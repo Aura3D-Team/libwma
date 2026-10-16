@@ -133,6 +133,11 @@ int main()
         const auto id = reinterpret_cast<Window>(window->getWindowInstance());
         settle(*window);
 
+        const u32 hz = window->displayRefreshHz();
+        std::printf("display refresh: %u Hz\n", static_cast<unsigned>(hz));
+        // Xvfb reports modes without timings, so 0 ("unknown") is a valid answer here; a real server gives a rate.
+        check(hz <= 1000, "the display's refresh rate is zero or plausible");
+
         check(present(*window, kColor), "a frame can be presented");
         check(readCentre(*window) == kColor, "the presented pixels reach the window");
 

@@ -56,9 +56,8 @@ void testDecision()
 //! Wall time of a fixed number of passes through process().
 std::chrono::duration<double> timeFrames(bool vsync, bool &presentWaits)
 {
-    auto window =
-        wma::createWindowManager(wma::WindowBackend::SDL3, wma::WindowDetails{160, 100, true, 0, vsync},
-                                 wma::GraphicsAPI::CPU);
+    auto window = wma::createWindowManager(wma::WindowBackend::SDL3, wma::WindowDetails{160, 100, true, 0, vsync},
+                                           wma::GraphicsAPI::CPU);
     window->createWindow("wma pacing");
     presentWaits = window->presentWaitsForDisplay();
 

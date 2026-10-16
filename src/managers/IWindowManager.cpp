@@ -1,6 +1,6 @@
 #include "wma/managers/IWindowManager.hpp"
-#include "wma/core/FrameTimer.hpp"
 #include "wma/core/FramePacing.hpp"
+#include "wma/core/FrameTimer.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -77,7 +77,8 @@ void IWindowManager::process(std::function<void()> &&actions)
 {
     FrameTimer timer(*getWindowFlags());
     const WindowDetails &details = *getWindowDetails();
-    timer.setTargetFPS(detail::effectiveTargetFPS(details, getGraphicsAPI(), presentWaitsForDisplay(), displayRefreshHz()));
+    timer.setTargetFPS(
+        detail::effectiveTargetFPS(details, getGraphicsAPI(), presentWaitsForDisplay(), displayRefreshHz()));
 
     while (!shouldClose())
     {

@@ -52,6 +52,7 @@ class SdlWindowManager : public IWindowManager
     SoftwareFramebuffer lockFramebuffer() override;
     void presentFramebuffer() override;
     [[nodiscard]] bool presentWaitsForDisplay() const noexcept override;
+    [[nodiscard]] u32 displayRefreshHz() const noexcept override;
     u64 getSDLWindowFlags() const;
     WindowFlags *getWindowFlags() noexcept override;
     [[nodiscard]] FramebufferSize getFramebufferSize() noexcept override;

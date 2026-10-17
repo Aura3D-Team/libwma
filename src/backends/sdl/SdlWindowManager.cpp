@@ -20,6 +20,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <thread>
 #include <utility>
 
@@ -154,7 +155,10 @@ void SdlWindowManager::createWindow(const char *windowName)
 
     if (graphicsAPI_ == GraphicsAPI::CPU && windowDetails_.vsync)
     {
-        surfaceVsync_ = SDL_SetWindowSurfaceVSync(window_, 1);
+        //! Read back: a backend may accept the call and still not hold the present to the display.
+        int applied = 0;
+        surfaceVsync_ =
+            SDL_SetWindowSurfaceVSync(window_, 1) && SDL_GetWindowSurfaceVSync(window_, &applied) && applied != 0;
         if (!surfaceVsync_)
             INK_WARN << "[wma] SDL cannot vsync the window surface (" << SDL_GetError() << "); pacing at "
                      << detail::kUnpacedVsyncFPS << " Hz instead";
@@ -314,6 +318,10 @@ void SdlWindowManager::pollEvents()
         case SDL_EVENT_WINDOW_RESTORED:
             handleWindowEvent(&event);
             break;
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+        case SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED:
+            markDisplayChanged();
+            break;
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP:
             keyboardListener_->handleKeyEvent(event.key);
@@ -457,6 +465,14 @@ SoftwareFramebuffer SdlWindowManager::lockFramebuffer()
 bool SdlWindowManager::presentWaitsForDisplay() const noexcept
 {
     return surfaceVsync_;
+}
+
+u32 SdlWindowManager::displayRefreshHz() const noexcept
+{
+    if (!window_)
+        return 0;
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_));
+    return mode && mode->refresh_rate > 0.0f ? static_cast<u32>(std::lround(mode->refresh_rate)) : 0u;
 }
 
 void SdlWindowManager::presentFramebuffer()

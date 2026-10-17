@@ -77,13 +77,27 @@ void IWindowManager::process(std::function<void()> &&actions)
 {
     FrameTimer timer(*getWindowFlags());
     const WindowDetails &details = *getWindowDetails();
-    timer.setTargetFPS(
-        detail::effectiveTargetFPS(details, getGraphicsAPI(), presentWaitsForDisplay(), displayRefreshHz()));
+
+    //! The rate is read once and again only when the display changes. The rest is re-decided every frame: a
+    //! present that stops waiting (Present lost mid-run) or a details change must take effect without a restart.
+    u32 refreshHz = 0;
+    bool haveRefreshHz = false;
 
     while (!shouldClose())
     {
         timer.beginFrame();
         pollEvents();
+
+        const GraphicsAPI api = getGraphicsAPI();
+        const bool waits = presentWaitsForDisplay();
+        const bool displayChanged = takeDisplayChanged();
+        if (detail::capsAtDisplayRate(details, api, waits) && (displayChanged || !haveRefreshHz))
+        {
+            refreshHz = displayRefreshHz();
+            haveRefreshHz = true;
+        }
+        timer.setTargetFPS(detail::effectiveTargetFPS(details, api, waits, refreshHz));
+
         actions();
         swapBuffers();
         timer.endFrame();

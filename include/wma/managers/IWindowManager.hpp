@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "../core/Types.hpp"
@@ -247,6 +248,12 @@ class IWindowManager
     //! at it, instead of 60, when the present does not wait.
     [[nodiscard]] virtual u32 displayRefreshHz() const noexcept;
 
+    //! True once after the window changed display or the display changed mode, i.e. displayRefreshHz() may differ.
+    [[nodiscard]] bool takeDisplayChanged() noexcept
+    {
+        return std::exchange(displayChanged_, false);
+    }
+
     /**
      * @brief The window's drawable size in pixels.
      *
@@ -363,6 +370,15 @@ class IWindowManager
 
   protected:
     IWindowManager() = default;
+
+    //! Backends call this from their event handler; process() re-reads the refresh rate on the next frame.
+    void markDisplayChanged() noexcept
+    {
+        displayChanged_ = true;
+    }
+
+  private:
+    bool displayChanged_ = false;
 };
 
 using WindowManagerFactory = std::function<std::unique_ptr<IWindowManager>(const WindowDetails &)>;

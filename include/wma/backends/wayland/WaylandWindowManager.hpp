@@ -162,6 +162,7 @@ class WaylandWindowManager : public IWindowManager
     //! two reused buffers and no pacing). Non-null while the last commit is
     //! unacknowledged.
     wl_callback *frameCallback_ = nullptr;
+    int dispatchedEvents_ = 0; //!< Events handled by dispatch() since waitForFrameCallback() last reset it
 
     //! OpenGL via EGL (opaque so this header needs no EGL includes).
     void *eglWindow_;  //!< wl_egl_window*

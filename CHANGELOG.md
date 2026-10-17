@@ -4,17 +4,17 @@ All notable changes to libwma are documented in this file.
 
 ## [0.8.1]
 
-### Added
-
-- `IWindowManager::presentWaitsForDisplay()`: whether a CPU window's present is held to the display's refresh. `displayRefreshHz()`: the rate of the display the window is on, where the backend can tell.
-
 ### Changed
 
 - **Licensing.** `LICENSE` is the full Apache-2.0 text (it was the short header). New `NOTICE` and `THIRD_PARTY_LICENSES.md`; `cmake --install` puts all three in `share/doc`.
 
 ### Fixed
 
-- A CPU window with `WindowDetails::vsync` ran uncapped. SDL3 now asks for a vsynced window surface; where the present cannot wait (native X11), `process()` caps the loop at the display's refresh rate (60 Hz where unknown). Native X11 now presents a vsynced CPU window through the Present extension, so `swapBuffers()` waits for the vblank and the frame does not tear; where the server lacks Present or shared pixmaps it falls back to that cap. X11 reads the rate through XRandR and presents through Present, so libXrandr and libXpresent are now dependencies of that backend. On Wayland, `swapBuffers()` of a vsynced CPU window now waits (up to 100 ms, cut short by input; one refresh if nothing was presented) for the compositor's frame callback: the present refused frames but the loop around it spun. `process()` re-reads the refresh rate when the window changes monitor or the mode changes (X11 move + RandR, SDL3 display events); SDL3 implements `displayRefreshHz()`. SDL3 logs a warning when the surface cannot be vsynced.
+- A CPU window with `WindowDetails::vsync` ran uncapped. `IWindowManager::presentWaitsForDisplay()` now says whether the present holds the loop to the refresh, and `displayRefreshHz()` gives the rate of the display the window is on; where the present cannot wait, `process()` caps the loop at that rate (60 Hz where unknown).
+  - **X11:** the present goes through the Present extension, so `swapBuffers()` waits for the vblank and the frame does not tear. A server without Present or shared pixmaps falls back to the cap. libXrandr and libXpresent are now dependencies of the backend.
+  - **Wayland:** `swapBuffers()` of a vsynced CPU window waits (up to 100 ms, cut short by input; one refresh if nothing was presented) for the compositor's frame callback. The present refused frames but the loop around it spun.
+  - **SDL3:** asks for a vsynced window surface and warns when it cannot get one.
+  - `process()` re-reads the refresh rate when the window changes monitor or the mode changes.
 - `SdlWindowManager::waitUntilWindowReady()` waited at least 200 ms for Android's surface to settle, all of it a blank screen on resume; it polls every 16 ms and settles after about 80 ms.
 
 ## [0.8.0]

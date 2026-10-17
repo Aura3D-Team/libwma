@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -19,6 +21,8 @@
 //! For XkbSetDetectableAutoRepeat; see createWindow().
 #include <X11/XKBlib.h>
 #include <X11/Xatom.h>
+#include <X11/extensions/Xpresent.h>
+#include <X11/extensions/Xrandr.h>
 
 #ifdef WMA_X11_HAS_GL
 #include <GL/glx.h>
@@ -63,6 +67,8 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
       utf8String_(other.utf8String_), maximized_(std::exchange(other.maximized_, false)),
       gc_(std::exchange(other.gc_, nullptr)), slots_(std::exchange(other.slots_, {})),
       shmCompletion_(other.shmCompletion_), shmRejected_(other.shmRejected_),
+      presentOpcode_(std::exchange(other.presentOpcode_, -1)), presentEventId_(std::exchange(other.presentEventId_, 0)),
+      presentSerial_(other.presentSerial_), presentPending_(other.presentPending_),
       glContext_(std::exchange(other.glContext_, nullptr)), fbConfig_(other.fbConfig_),
       windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
       keyboardListener_(std::move(other.keyboardListener_)), mouseListener_(std::move(other.mouseListener_)),
@@ -92,6 +98,10 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         slots_ = std::exchange(other.slots_, {});
         shmCompletion_ = other.shmCompletion_;
         shmRejected_ = other.shmRejected_;
+        presentOpcode_ = std::exchange(other.presentOpcode_, -1);
+        presentEventId_ = std::exchange(other.presentEventId_, 0);
+        presentSerial_ = other.presentSerial_;
+        presentPending_ = other.presentPending_;
         glContext_ = std::exchange(other.glContext_, nullptr);
         fbConfig_ = other.fbConfig_;
         windowDetails_ = other.windowDetails_;
@@ -245,6 +255,14 @@ void X11WindowManager::createWindow(const char *windowName)
     wmDeleteWindow_ = XInternAtom(display_, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(display_, window_, &wmDeleteWindow_, 1);
 
+    int randrError = 0;
+    int randrBase = 0;
+    if (XRRQueryExtension(display_, &randrBase, &randrError))
+    {
+        randrEventBase_ = randrBase;
+        XRRSelectInput(display_, window_, RRScreenChangeNotifyMask);
+    }
+
     XMapWindow(display_, window_);
     XFlush(display_);
 
@@ -274,6 +292,8 @@ void X11WindowManager::createWindow(const char *windowName)
         gc_ = XCreateGC(display_, window_, 0, nullptr);
         if (XShmQueryExtension(display_))
             shmCompletion_ = XShmGetEventBase(display_) + ShmCompletion;
+        if (windowDetails_.vsync)
+            setupPresent();
     }
 }
 
@@ -442,7 +462,13 @@ void X11WindowManager::initGL()
 void X11WindowManager::createSlot(Slot &slot, i32 width, i32 height)
 {
     if (shmCompletion_ >= 0 && !shmRejected_ && createShmImage(slot, width, height))
+    {
+        //! A segment the server cannot map as a pixmap ends Present for the window; the loop is rate-capped instead.
+        if (presentOpcode_ >= 0 && !createPresentPixmap(slot, width, height))
+            presentOpcode_ = -1;
         return;
+    }
+    presentOpcode_ = -1;
 
     const int screen = DefaultScreen(display_);
 
@@ -505,8 +531,50 @@ bool X11WindowManager::createShmImage(Slot &slot, i32 width, i32 height)
     return true;
 }
 
+void X11WindowManager::setupPresent()
+{
+    int opcode = 0;
+    int eventBase = 0;
+    int errorBase = 0;
+    int major = 0;
+    int minor = 0;
+    int shmMajor = 0;
+    int shmMinor = 0;
+    Bool sharedPixmaps = False;
+    //! Pixmaps over the segment are what Present flips; without them the frame would need a copy per present.
+    if (shmCompletion_ < 0 || !XShmQueryVersion(display_, &shmMajor, &shmMinor, &sharedPixmaps) || !sharedPixmaps ||
+        !XPresentQueryExtension(display_, &opcode, &eventBase, &errorBase) ||
+        !XPresentQueryVersion(display_, &major, &minor) || major < 1)
+        return;
+    presentEventId_ = XPresentSelectInput(display_, window_, PresentCompleteNotifyMask | PresentIdleNotifyMask);
+    presentOpcode_ = opcode;
+}
+
+bool X11WindowManager::createPresentPixmap(Slot &slot, i32 width, i32 height)
+{
+    const int screen = DefaultScreen(display_);
+    //! Like the attach: the server answers a pixmap it cannot back only asynchronously.
+    shmAttachFailed = false;
+    const XErrorHandler previous = XSetErrorHandler(onShmAttachError);
+    const Pixmap pixmap =
+        XShmCreatePixmap(display_, window_, slot.shm.shmaddr, &slot.shm, static_cast<unsigned>(width),
+                         static_cast<unsigned>(height), static_cast<unsigned>(DefaultDepth(display_, screen)));
+    XSync(display_, False);
+    XSetErrorHandler(previous);
+    if (shmAttachFailed || pixmap == 0)
+    {
+        if (pixmap != 0 && !shmAttachFailed)
+            XFreePixmap(display_, pixmap);
+        return false;
+    }
+    slot.pixmap = pixmap;
+    return true;
+}
+
 void X11WindowManager::destroySlot(Slot &slot) noexcept
 {
+    if (slot.pixmap)
+        XFreePixmap(display_, slot.pixmap);
     if (slot.shm.shmaddr)
     {
         XShmDetach(display_, &slot.shm);
@@ -549,6 +617,17 @@ void X11WindowManager::pollEvents()
          */
         if (keyboardListener_->filterEvent(&event))
             continue;
+
+        if (event.type == GenericEvent && presentOpcode_ >= 0 && event.xcookie.extension == presentOpcode_)
+        {
+            XGenericEventCookie cookie = event.xcookie;
+            if (XGetEventData(display_, &cookie))
+            {
+                handlePresentEvent(cookie);
+                XFreeEventData(display_, &cookie);
+            }
+            continue;
+        }
 
         if (event.type == shmCompletion_)
         {
@@ -604,8 +683,59 @@ void X11WindowManager::pollEvents()
     }
 }
 
+void X11WindowManager::handlePresentEvent(XGenericEventCookie &cookie)
+{
+    if (cookie.evtype == PresentCompleteNotify)
+    {
+        const auto &done = *static_cast<const XPresentCompleteNotifyEvent *>(cookie.data);
+        if (done.serial_number == presentPending_)
+            presentPending_ = 0;
+    }
+    else if (cookie.evtype == PresentIdleNotify)
+    {
+        const auto &idle = *static_cast<const XPresentIdleNotifyEvent *>(cookie.data);
+        for (Slot &slot : slots_)
+            slot.busy = slot.busy && slot.pixmap != idle.pixmap;
+    }
+}
+
+void X11WindowManager::waitForPresent()
+{
+    //! A window the server never completes for (a stalled output) still ticks, slowly, instead of freezing.
+    constexpr auto kLimit = std::chrono::milliseconds(100);
+    //! Nothing was presented, so nothing to wait for; one refresh of blocking keeps an idle loop from spinning
+    //! and still wakes on input.
+    constexpr int kIdleWaitMs = 16;
+
+    if (presentPending_ == 0)
+    {
+        waitEvents(kIdleWaitMs);
+        return;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + kLimit;
+    while (presentPending_ != 0 && !windowShouldClose_)
+    {
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0)
+        {
+            presentPending_ = 0;
+            break;
+        }
+        waitEvents(static_cast<int>(remaining.count()));
+    }
+}
+
+bool X11WindowManager::presentWaitsForDisplay() const noexcept
+{
+    return graphicsAPI_ == GraphicsAPI::CPU && presentOpcode_ >= 0;
+}
+
 void X11WindowManager::swapBuffers()
 {
+    if (graphicsAPI_ == GraphicsAPI::CPU && presentOpcode_ >= 0)
+        waitForPresent();
 #ifdef WMA_X11_HAS_GL
     if (graphicsAPI_ == GraphicsAPI::OpenGL && display_ && window_)
         glXSwapBuffers(display_, window_);
@@ -617,12 +747,24 @@ void X11WindowManager::handleWindowEvent(const XEvent *event)
     if (event->type == ConfigureNotify)
     {
         const XConfigureEvent &xce = event->xconfigure;
+        //! A move is the only way the window changes monitor; a resize drag must not re-query RandR per frame.
+        if (xce.x != lastX_ || xce.y != lastY_)
+        {
+            lastX_ = xce.x;
+            lastY_ = xce.y;
+            markDisplayChanged();
+        }
         if (xce.width != windowDetails_.width || xce.height != windowDetails_.height)
         {
             windowDetails_.width = xce.width;
             windowDetails_.height = xce.height;
             windowFlags_.resized = true;
         }
+    }
+    else if (randrEventBase_ >= 0 && event->type == randrEventBase_ + RRScreenChangeNotify)
+    {
+        XRRUpdateConfiguration(const_cast<XEvent *>(event));
+        markDisplayChanged();
     }
     else if (event->type == PropertyNotify && event->xproperty.atom == netWmState_)
     {
@@ -690,7 +832,17 @@ void X11WindowManager::presentFramebuffer()
     Slot &slot = *std::exchange(locked_, nullptr);
     const auto width = static_cast<unsigned>(slot.image->width);
     const auto height = static_cast<unsigned>(slot.image->height);
-    if (slot.shm.shmaddr)
+    if (slot.pixmap && presentOpcode_ >= 0)
+    {
+        //! Serial 0 means "none pending"; skip it on wrap.
+        presentSerial_ = presentSerial_ + 1 == 0 ? 1 : presentSerial_ + 1;
+        slot.busy = true;
+        //! No target MSC and no divisor: the server copies at the next vblank, which is the wait.
+        XPresentPixmap(display_, window_, slot.pixmap, presentSerial_, None, None, 0, 0, None, None, None,
+                       PresentOptionNone, 0, 0, 0, nullptr, 0);
+        presentPending_ = presentSerial_;
+    }
+    else if (slot.shm.shmaddr)
     {
         //! The slots move with the manager, which leaves the image's own pointer stale.
         slot.image->obdata = reinterpret_cast<XPointer>(&slot.shm);
@@ -733,6 +885,63 @@ void X11WindowManager::setTextInputEnabled(bool enabled) noexcept
 bool X11WindowManager::isTextInputEnabled() const noexcept
 {
     return keyboardListener_ && keyboardListener_->isTextInputEnabled();
+}
+
+u32 X11WindowManager::displayRefreshHz() const noexcept
+{
+    if (!display_)
+        return 0;
+
+    const Window root = DefaultRootWindow(display_);
+    XRRScreenResources *resources = XRRGetScreenResourcesCurrent(display_, root);
+    if (!resources)
+        return 0;
+
+    //! The monitor under the window's centre; failing that, the first one that is lit.
+    int centerX = 0;
+    int centerY = 0;
+    XWindowAttributes attributes{};
+    Window ignored = 0;
+    const bool placed = XGetWindowAttributes(display_, window_, &attributes) != 0 &&
+                        XTranslateCoordinates(display_, window_, root, attributes.width / 2, attributes.height / 2,
+                                              &centerX, &centerY, &ignored) != 0;
+
+    double hz = 0.0;
+    for (int index = 0; index < resources->ncrtc; ++index)
+    {
+        XRRCrtcInfo *crtc = XRRGetCrtcInfo(display_, resources, resources->crtcs[index]);
+        if (!crtc)
+            continue;
+
+        double rate = 0.0;
+        for (int mode = 0; crtc->mode != None && mode < resources->nmode; ++mode)
+        {
+            const XRRModeInfo &info = resources->modes[mode];
+            if (info.id != crtc->mode || info.hTotal == 0 || info.vTotal == 0)
+                continue;
+            //! dotClock / (pixels per frame); an interlaced mode scans half a frame per pass, a doublescan twice.
+            double lines = info.vTotal;
+            if (info.modeFlags & RR_DoubleScan)
+                lines *= 2.0;
+            if (info.modeFlags & RR_Interlace)
+                lines *= 0.5;
+            rate = static_cast<double>(info.dotClock) / (static_cast<double>(info.hTotal) * lines);
+        }
+
+        const bool under = placed && centerX >= crtc->x && centerY >= crtc->y &&
+                           centerX < crtc->x + static_cast<int>(crtc->width) &&
+                           centerY < crtc->y + static_cast<int>(crtc->height);
+        XRRFreeCrtcInfo(crtc);
+
+        if (rate <= 0.0)
+            continue;
+        if (hz <= 0.0 || under)
+            hz = rate;
+        if (under)
+            break;
+    }
+    XRRFreeScreenResources(resources);
+    return hz > 0.0 ? static_cast<u32>(std::lround(hz)) : 0u;
 }
 
 bool X11WindowManager::isClipboardSupported() const noexcept
@@ -786,6 +995,13 @@ WmaCode X11WindowManager::destroy()
             glContext_ = nullptr;
         }
 #endif
+        if (presentEventId_)
+        {
+            XPresentFreeInput(display_, window_, presentEventId_);
+            presentEventId_ = 0;
+        }
+        presentOpcode_ = -1;
+        presentPending_ = 0;
         if (gc_)
         {
             XFreeGC(display_, gc_);

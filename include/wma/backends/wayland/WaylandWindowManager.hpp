@@ -47,6 +47,7 @@ class WaylandWindowManager : public IWindowManager
     SoftwareFramebuffer lockFramebuffer() override;
     FramebufferSize getFramebufferSize() noexcept override;
     void presentFramebuffer() override;
+    [[nodiscard]] bool presentWaitsForDisplay() const noexcept override;
     WindowFlags *getWindowFlags() noexcept override;
     const WindowDetails *getWindowDetails() noexcept override;
     const std::vector<const char *> getVulkanExtensions() const override;
@@ -93,6 +94,7 @@ class WaylandWindowManager : public IWindowManager
     [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
     //! pollEvents() and waitEvents() differ only by the poll timeout.
     void dispatch(int timeoutMs);
+    void waitForFrameCallback();
     wl_display *display_;
     wl_registry *registry_;
     wl_compositor *compositor_;
@@ -160,6 +162,7 @@ class WaylandWindowManager : public IWindowManager
     //! two reused buffers and no pacing). Non-null while the last commit is
     //! unacknowledged.
     wl_callback *frameCallback_ = nullptr;
+    int dispatchedEvents_ = 0; //!< Events handled by dispatch() since waitForFrameCallback() last reset it
 
     //! OpenGL via EGL (opaque so this header needs no EGL includes).
     void *eglWindow_;  //!< wl_egl_window*

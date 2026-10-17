@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 4.3.3)
 
 project(wma
-VERSION 0.8.0
+VERSION 0.8.1
 LANGUAGES C CXX
 )
 
@@ -233,7 +233,7 @@ endif()
 
 if(WMA_ENABLE_X11)
     target_compile_definitions(wma PRIVATE WMA_ENABLE_X11)
-    target_link_libraries(wma PRIVATE X11::X11 X11::Xext X11::Xi)
+    target_link_libraries(wma PRIVATE X11::X11 X11::Xext X11::Xi X11::Xrandr X11::Xpresent)
 
     # OpenGL on X11 is done through GLX. Optional: if libGL/GLX is unavailable the
     # backend still builds and simply reports OpenGL as unsupported at runtime.

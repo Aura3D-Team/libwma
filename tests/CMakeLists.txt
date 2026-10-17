@@ -23,6 +23,13 @@ if(WMA_ENABLE_SDL)
     set_tests_properties(wma_test_sdl_clipboard PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
 endif()
 
+if(WMA_ENABLE_SDL)
+    add_executable(wma_test_cpu_pacing test_cpu_pacing.cpp)
+    target_link_libraries(wma_test_cpu_pacing PRIVATE wma)
+    add_test(NAME wma_test_cpu_pacing COMMAND wma_test_cpu_pacing)
+    set_tests_properties(wma_test_cpu_pacing PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
+endif()
+
 # Threaded, unlike the decoder tests: MixCallbackSlot exists to make
 # setMixCallback() safe on a running device, and only two threads can show that.
 # Worth running under -fsanitize=thread, which is what turns a missed

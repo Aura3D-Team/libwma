@@ -8,6 +8,10 @@ All notable changes to libwma are documented in this file.
 
 - `IWindowManager::presentWaitsForDisplay()`: whether a CPU window's present is held to the display's refresh. `displayRefreshHz()`: the rate of the display the window is on, where the backend can tell.
 
+### Changed
+
+- **Licensing.** `LICENSE` is the full Apache-2.0 text (it was the short header). New `NOTICE` and `THIRD_PARTY_LICENSES.md`; `cmake --install` puts all three in `share/doc`.
+
 ### Fixed
 
 - A CPU window with `WindowDetails::vsync` ran uncapped. SDL3 now asks for a vsynced window surface; where the present cannot wait (native X11), `process()` caps the loop at the display's refresh rate (60 Hz where unknown), a limit that does not prevent tearing. X11 reads it through XRandR, so libXrandr is now a dependency of that backend. On Wayland, `swapBuffers()` of a CPU window now waits (up to 100 ms) for the compositor's frame callback: the present refused frames but the loop around it spun. SDL3 logs a warning when the surface cannot be vsynced.

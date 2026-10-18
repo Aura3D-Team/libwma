@@ -2,7 +2,12 @@
 
 All notable changes to libwma are documented in this file.
 
-## [0.8.1]
+## [0.9.0]
+
+### Added
+
+- X11 CPU windows with `WindowDetails::vsync` are paced to the display. The present goes through the Present extension, so `swapBuffers()` waits for the vblank and the frame does not tear; a server without Present or shared pixmaps falls back to a loop cap at the refresh rate. `IWindowManager::presentWaitsForDisplay()` reports which one a window got, and `displayRefreshHz()` the rate of the display it is on. libXrandr and libXpresent are now dependencies of the X11 backend.
+- `WindowFlags::textInputDismissed`: the platform closed the on-screen keyboard itself (Android's back gesture). SDL3 used to go on believing text input was on, so the keyboard could not be raised again.
 
 ### Changed
 
@@ -10,12 +15,12 @@ All notable changes to libwma are documented in this file.
 
 ### Fixed
 
-- A CPU window with `WindowDetails::vsync` ran uncapped. `IWindowManager::presentWaitsForDisplay()` now says whether the present holds the loop to the refresh, and `displayRefreshHz()` gives the rate of the display the window is on; where the present cannot wait, `process()` caps the loop at that rate (60 Hz where unknown).
-  - **X11:** the present goes through the Present extension, so `swapBuffers()` waits for the vblank and the frame does not tear. A server without Present or shared pixmaps falls back to the cap. libXrandr and libXpresent are now dependencies of the backend.
+- SDL3: `getWindowDetails()` kept the size the window was asked for until a resize event came. Android sends none for a window created at its surface's size, or for a surface that came back at another size, so an app started in portrait laid itself out for the landscape default and drew into part of the screen. The size is read from SDL itself.
+- A CPU window with `WindowDetails::vsync` ran uncapped. Where the present cannot wait, `process()` now caps the loop at the display's refresh rate (60 Hz where unknown), and re-reads it when the window changes monitor or the mode changes.
   - **Wayland:** `swapBuffers()` of a vsynced CPU window waits (up to 100 ms, cut short by input; one refresh if nothing was presented) for the compositor's frame callback. The present refused frames but the loop around it spun.
   - **SDL3:** asks for a vsynced window surface and warns when it cannot get one.
-  - `process()` re-reads the refresh rate when the window changes monitor or the mode changes.
 - `SdlWindowManager::waitUntilWindowReady()` waited at least 200 ms for Android's surface to settle, all of it a blank screen on resume; it polls every 16 ms and settles after about 80 ms.
+- SDL3: a finger the system cancelled (`SDL_EVENT_FINGER_CANCELED`: an Android edge swipe, a palm) was dropped, so no `TouchListener` up action came for it and anything tracking fingers kept it forever. It is reported as an up.
 
 ## [0.8.0]
 

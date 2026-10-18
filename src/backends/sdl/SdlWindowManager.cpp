@@ -296,6 +296,9 @@ void SdlWindowManager::pollEvents()
     if (frameHitTest_)
         frameHitTest_->pump();
 
+    if (keyboardListener_->takePlatformStop())
+        windowFlags_.textInputDismissed = true;
+
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
@@ -338,12 +341,30 @@ void SdlWindowManager::pollEvents()
         case SDL_EVENT_FINGER_DOWN:
         case SDL_EVENT_FINGER_MOTION:
         case SDL_EVENT_FINGER_UP:
+        case SDL_EVENT_FINGER_CANCELED:
             touchListener_->handleEvent(event);
             break;
         default:
             break;
         }
     }
+    syncSize();
+}
+
+void SdlWindowManager::syncSize() noexcept
+{
+    //! Android creates the window at the surface's own size and sends no resize for it, and a surface replaced while
+    //! the app was away can come back at another size without one either: the event alone leaves the size at the
+    //! one the window was asked for.
+    int width = 0;
+    int height = 0;
+    if (!window_ || !SDL_GetWindowSize(window_, &width, &height) || width <= 0 || height <= 0)
+        return;
+    if (width == windowDetails_.width && height == windowDetails_.height)
+        return;
+    windowDetails_.width = width;
+    windowDetails_.height = height;
+    windowFlags_.resized = true;
 }
 
 void SdlWindowManager::swapBuffers()
@@ -524,6 +545,7 @@ WindowFlags *SdlWindowManager::getWindowFlags() noexcept
 }
 const WindowDetails *SdlWindowManager::getWindowDetails() noexcept
 {
+    syncSize();
     return &windowDetails_;
 }
 

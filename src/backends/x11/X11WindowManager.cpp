@@ -60,7 +60,8 @@ X11WindowManager::~X11WindowManager()
 }
 
 X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
-    : display_(std::exchange(other.display_, nullptr)), window_(std::exchange(other.window_, 0)),
+    : display_(std::exchange(other.display_, nullptr)), lastX_(other.lastX_), lastY_(other.lastY_),
+      randrEventBase_(std::exchange(other.randrEventBase_, -1)), window_(std::exchange(other.window_, 0)),
       colormap_(std::exchange(other.colormap_, 0)), wmDeleteWindow_(other.wmDeleteWindow_),
       netWmState_(other.netWmState_), netWmStateMaximizedVert_(other.netWmStateMaximizedVert_),
       netWmStateMaximizedHorz_(other.netWmStateMaximizedHorz_), netWmName_(other.netWmName_),
@@ -85,6 +86,9 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
     {
         destroy();
         display_ = std::exchange(other.display_, nullptr);
+        lastX_ = other.lastX_;
+        lastY_ = other.lastY_;
+        randrEventBase_ = std::exchange(other.randrEventBase_, -1);
         window_ = std::exchange(other.window_, 0);
         colormap_ = std::exchange(other.colormap_, 0);
         wmDeleteWindow_ = other.wmDeleteWindow_;

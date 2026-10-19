@@ -5,6 +5,7 @@
 releases/
 .qtcreator/
 .zed/
+__pycache__/
 
 # Ignore compiled object files
 *.o

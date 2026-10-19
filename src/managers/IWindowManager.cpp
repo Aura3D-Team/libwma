@@ -1,4 +1,5 @@
 #include "wma/managers/IWindowManager.hpp"
+#include "wma/core/FramePacing.hpp"
 #include "wma/core/FrameTimer.hpp"
 
 #ifdef __EMSCRIPTEN__
@@ -8,6 +9,16 @@
 
 namespace wma
 {
+
+bool IWindowManager::presentWaitsForDisplay() const noexcept
+{
+    return false;
+}
+
+u32 IWindowManager::displayRefreshHz() const noexcept
+{
+    return 0;
+}
 
 #ifdef __EMSCRIPTEN__
 
@@ -65,12 +76,28 @@ void IWindowManager::process(std::function<void()> &&actions)
 void IWindowManager::process(std::function<void()> &&actions)
 {
     FrameTimer timer(*getWindowFlags());
-    timer.setTargetFPS(static_cast<u32>(getWindowDetails()->targetFPS < 0 ? 0 : getWindowDetails()->targetFPS));
+    const WindowDetails &details = *getWindowDetails();
+
+    //! The rate is read once and again only when the display changes. The rest is re-decided every frame: a
+    //! present that stops waiting (Present lost mid-run) or a details change must take effect without a restart.
+    u32 refreshHz = 0;
+    bool haveRefreshHz = false;
 
     while (!shouldClose())
     {
         timer.beginFrame();
         pollEvents();
+
+        const GraphicsAPI api = getGraphicsAPI();
+        const bool waits = presentWaitsForDisplay();
+        const bool displayChanged = takeDisplayChanged();
+        if (detail::capsAtDisplayRate(details, api, waits) && (displayChanged || !haveRefreshHz))
+        {
+            refreshHz = displayRefreshHz();
+            haveRefreshHz = true;
+        }
+        timer.setTargetFPS(detail::effectiveTargetFPS(details, api, waits, refreshHz));
+
         actions();
         swapBuffers();
         timer.endFrame();

@@ -55,6 +55,8 @@ class X11WindowManager : public IWindowManager
     [[nodiscard]] std::string getClipboardText() override;
     bool setClipboardText(std::string_view text) override;
     MouseListener &getMouseListener() noexcept override;
+    [[nodiscard]] u32 displayRefreshHz() const noexcept override;
+    [[nodiscard]] bool presentWaitsForDisplay() const noexcept override;
     bool shouldClose() const override;
     WindowBackend getBackendType() const override;
     GraphicsAPI getGraphicsAPI() const override;
@@ -71,6 +73,9 @@ class X11WindowManager : public IWindowManager
     [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
 
     Display *display_;
+    int lastX_ = 0;
+    int lastY_ = 0;
+    int randrEventBase_ = -1; //!< -1: RandR unavailable, no mode-change events
     Window window_;
     Colormap colormap_;
     Atom wmDeleteWindow_;
@@ -89,6 +94,7 @@ class X11WindowManager : public IWindowManager
     {
         XImage *image = nullptr;
         XShmSegmentInfo shm{};
+        Pixmap pixmap = 0; //!< The segment as a drawable, for Present; 0 when presenting by XShmPutImage
         bool busy = false; //!< The server has not yet reported it is done reading it.
     };
     GC gc_;
@@ -96,6 +102,12 @@ class X11WindowManager : public IWindowManager
     Slot *locked_ = nullptr;
     int shmCompletion_ = -1;   //!< ShmCompletion event type; -1 without MIT-SHM
     bool shmRejected_ = false; //!< The server could not attach a segment; slots use XPutImage
+
+    //! Vblank-synchronised present (X Present extension), CPU + WindowDetails::vsync only.
+    int presentOpcode_ = -1; //!< -1: not in use, presentFramebuffer() does not wait for the display
+    XID presentEventId_ = 0; //!< Release with XPresentFreeInput
+    u32 presentSerial_ = 0;  //!< Last serial handed to the server; never 0
+    u32 presentPending_ = 0; //!< Serial whose CompleteNotify has not arrived; 0 when none
 
     //! OpenGL via GLX (types kept opaque so this header needs no GL includes)
     void *glContext_; //!< GLXContext
@@ -117,6 +129,11 @@ class X11WindowManager : public IWindowManager
     void createSlot(Slot &slot, i32 width, i32 height);
     [[nodiscard]] bool createShmImage(Slot &slot, i32 width, i32 height);
     void destroySlot(Slot &slot) noexcept;
+    void setupPresent();
+    [[nodiscard]] bool createPresentPixmap(Slot &slot, i32 width, i32 height);
+    void handlePresentEvent(XGenericEventCookie &cookie);
+    //! swapBuffers() of a Present window: blocks until the frame just presented is on screen.
+    void waitForPresent();
     void initGL();
     bool requestMaximized(bool maximized) noexcept;
     void refreshMaximized() noexcept;

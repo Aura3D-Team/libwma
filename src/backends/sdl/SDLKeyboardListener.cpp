@@ -71,5 +71,15 @@ void SDLKeyboardListener::setTextInputEnabled(bool enabled)
     textInputEnabled_ = enabled;
 }
 
+bool SDLKeyboardListener::takePlatformStop()
+{
+    //! Android drops text input itself when the keyboard is dismissed; the cached flag would then say it is on and
+    //! never start it again.
+    if (!sdlWindow_ || !textInputEnabled_ || SDL_TextInputActive(sdlWindow_))
+        return false;
+    textInputEnabled_ = false;
+    return true;
+}
+
 } // namespace wma
 #endif

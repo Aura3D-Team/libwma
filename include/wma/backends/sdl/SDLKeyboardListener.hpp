@@ -32,6 +32,9 @@ class SDLKeyboardListener : public KeyboardListener
      */
     void setTextInputEnabled(bool enabled);
 
+    //! True once if the platform stopped text input behind our back; the flag is then off again.
+    [[nodiscard]] bool takePlatformStop();
+
     [[nodiscard]] bool isTextInputEnabled() const noexcept
     {
         return textInputEnabled_;

@@ -8,6 +8,8 @@
 #include "wma/backends/wayland/protocols/relative-pointer-unstable-v1-client-protocol.h"
 #include "wma/exceptions/WMAException.hpp"
 
+#include <chrono>
+
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
@@ -471,7 +473,10 @@ void WaylandWindowManager::dispatch(int timeoutMs)
         }
         // Let the caller react to queued events without waiting for another one.
         if (dispatched > 0)
+        {
             timeoutMs = 0;
+            dispatchedEvents_ += dispatched;
+        }
     }
 
     if (wl_display_flush(display_) < 0 && errno != EAGAIN)
@@ -497,8 +502,11 @@ void WaylandWindowManager::dispatch(int timeoutMs)
             windowShouldClose_ = true;
     }
 
-    if (wl_display_dispatch_pending(display_) < 0)
+    const int pending = wl_display_dispatch_pending(display_);
+    if (pending < 0)
         windowShouldClose_ = true;
+    else
+        dispatchedEvents_ += pending;
 }
 
 void WaylandWindowManager::swapBuffers()
@@ -509,6 +517,38 @@ void WaylandWindowManager::swapBuffers()
         eglSwapBuffers(static_cast<EGLDisplay>(eglDisplay_), static_cast<EGLSurface>(eglSurface_));
     }
 #endif
+
+    if (graphicsAPI_ == GraphicsAPI::CPU && windowDetails_.vsync)
+        waitForFrameCallback();
+}
+
+void WaylandWindowManager::waitForFrameCallback()
+{
+    //! A hidden or occluded surface gets no callbacks; the bound keeps such a window ticking, slowly, not frozen.
+    constexpr auto kLimit = std::chrono::milliseconds(100);
+    //! No frame was presented, so there is no callback to wait for; one refresh of blocking keeps an idle loop
+    //! from spinning and still wakes on input.
+    constexpr int kIdleWaitMs = 16;
+
+    if (!frameCallback_)
+    {
+        dispatch(kIdleWaitMs);
+        return;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + kLimit;
+    while (frameCallback_ && !windowShouldClose_)
+    {
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        if (remaining.count() <= 0)
+            break;
+        dispatchedEvents_ = 0;
+        dispatch(static_cast<int>(remaining.count()));
+        //! The callback itself is one event; anything more is input the app should see before the next refresh.
+        if (frameCallback_ && dispatchedEvents_ > 0)
+            break;
+    }
 }
 
 void WaylandWindowManager::setupInputDevices()
@@ -591,6 +631,12 @@ void WaylandWindowManager::presentFramebuffer()
     wl_surface_commit(surface_);
     wl_display_flush(display_);
     lockedSlot_ = nullptr;
+}
+
+bool WaylandWindowManager::presentWaitsForDisplay() const noexcept
+{
+    //! swapBuffers() waits for the frame callback, which the compositor sends at the output's pace.
+    return graphicsAPI_ == GraphicsAPI::CPU && windowDetails_.vsync;
 }
 
 const std::vector<const char *> WaylandWindowManager::getVulkanExtensions() const

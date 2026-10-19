@@ -19,6 +19,7 @@ void SDLTouchListener::handleEvent(const SDL_Event &event)
     case SDL_EVENT_FINGER_DOWN:
     case SDL_EVENT_FINGER_MOTION:
     case SDL_EVENT_FINGER_UP:
+    case SDL_EVENT_FINGER_CANCELED: // Android: a system gesture took the finger, and no UP follows.
     {
         // SDL reports touch positions normalized to 0..1; convert to window
         // pixels so callers can share coordinate math with the mouse path
@@ -54,7 +55,7 @@ void SDLTouchListener::handleEvent(const SDL_Event &event)
 
         const WMATouchPoint point(fingerId, x, y, deltaX, deltaY);
 
-        if (event.type == SDL_EVENT_FINGER_UP)
+        if (event.type != SDL_EVENT_FINGER_MOTION)
         {
             activeFingers_.erase(fingerId);
             dispatchUp(point);

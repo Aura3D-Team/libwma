@@ -93,6 +93,7 @@ C++ formatting and static analysis: [local commands and CI scope](docs/code-qual
 - CMake ≥ 4.3.3
 - [`ink`](https://github.com/Arthu-RL/libink) (required)
 - At least one backend SDK: **SDL3 3.2+**, **GLFW 3.4+**, **Xlib**, or **Wayland**
+- X11 backend: `libXext`, `libXi`, `libXrandr` and `libXpresent` development packages
 - Optional for OpenGL on the native backends: GLX (X11) / EGL + `wayland-egl` (Wayland)
 
 ### Desktop build & install
@@ -297,7 +298,8 @@ kb.pushContext(menu);               // stack overlay (wins until popContext())
 
 ## 📄 License
 
-See [LICENSE](LICENSE).
+Apache-2.0 — [LICENSE](LICENSE), [NOTICE](NOTICE). Generated and linked third-party
+code: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ---
 

@@ -154,6 +154,15 @@ if(WMA_ENABLE_X11)
     if(NOT TARGET X11::Xi)
         message(FATAL_ERROR "[wma] libXi not found — the X11 backend needs it for mouse capture.")
     endif()
+    # RandR, for the refresh rate a vsynced CPU window is paced at.
+    if(NOT TARGET X11::Xrandr)
+        message(FATAL_ERROR "[wma] libXrandr not found — the X11 backend needs it for the display's refresh rate.")
+    endif()
+    # X Present, which gives a CPU window a vblank-synchronised present. The server may still lack it at run time;
+    # process() then caps the loop at the display's refresh rate.
+    if(NOT TARGET X11::Xpresent)
+        message(FATAL_ERROR "[wma] libXpresent not found — the X11 backend needs it for vsynced CPU windows.")
+    endif()
     # Optional: GLX for OpenGL-on-X11. Provides the imported target OpenGL::GLX.
     find_package(OpenGL COMPONENTS OpenGL GLX)
     if(TARGET OpenGL::GLX)

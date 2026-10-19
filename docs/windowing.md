@@ -203,6 +203,20 @@ if (fb.valid()) {
 Pixels are 32-bit; channel order is backend-defined. Always go through `pitch`,
 never `width * 4`.
 
+With `WindowDetails::vsync` and `targetFPS = 0`, `presentWaitsForDisplay()` says whether the loop is held to the refresh
+by blocking:
+
+| Backend | Present | `process()` |
+|---|---|---|
+| Wayland | `swapBuffers()` waits for the frame callback | no cap |
+| X11 + X Present | `swapBuffers()` waits for the vblank-synchronised copy; no tearing | no cap |
+| SDL3 | vsynced window surface, if the driver accepts it | no cap |
+| X11 server without Present or MIT-SHM pixmaps, SDL3 without surface vsync | does not wait; can tear | caps at `displayRefreshHz()` (60 where unknown) |
+
+Set `targetFPS` for another rate. A loop of your own that calls `swapBuffers()` is paced the same way. On Wayland and X11
+a stalled output waits at most 100 ms, and a frame that presented nothing blocks one refresh (16 ms) or until input.
+X11 reads `vsync` when the window is created.
+
 ## Errors
 
 Everything derives from `wma::WMAException`. Catch most-derived first:

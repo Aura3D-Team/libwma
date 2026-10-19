@@ -1,4 +1,5 @@
 #include "wma/backends/sdl/SdlWindowManager.hpp"
+#include "wma/core/FramePacing.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
 #include <ink/Inkogger.h>
@@ -19,6 +20,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <thread>
 #include <utility>
 
@@ -149,6 +151,17 @@ void SdlWindowManager::createWindow(const char *windowName)
         }
         SDL_GL_MakeCurrent(window_, static_cast<SDL_GLContext>(glContext_));
         SDL_GL_SetSwapInterval(windowDetails_.vsync ? 1 : 0);
+    }
+
+    if (graphicsAPI_ == GraphicsAPI::CPU && windowDetails_.vsync)
+    {
+        //! Read back: a backend may accept the call and still not hold the present to the display.
+        int applied = 0;
+        surfaceVsync_ =
+            SDL_SetWindowSurfaceVSync(window_, 1) && SDL_GetWindowSurfaceVSync(window_, &applied) && applied != 0;
+        if (!surfaceVsync_)
+            INK_WARN << "[wma] SDL cannot vsync the window surface (" << SDL_GetError() << "); pacing at "
+                     << detail::kUnpacedVsyncFPS << " Hz instead";
     }
 
 #ifdef __APPLE__
@@ -283,6 +296,9 @@ void SdlWindowManager::pollEvents()
     if (frameHitTest_)
         frameHitTest_->pump();
 
+    if (keyboardListener_->takePlatformStop())
+        windowFlags_.textInputDismissed = true;
+
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
@@ -305,6 +321,10 @@ void SdlWindowManager::pollEvents()
         case SDL_EVENT_WINDOW_RESTORED:
             handleWindowEvent(&event);
             break;
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+        case SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED:
+            markDisplayChanged();
+            break;
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP:
             keyboardListener_->handleKeyEvent(event.key);
@@ -321,12 +341,30 @@ void SdlWindowManager::pollEvents()
         case SDL_EVENT_FINGER_DOWN:
         case SDL_EVENT_FINGER_MOTION:
         case SDL_EVENT_FINGER_UP:
+        case SDL_EVENT_FINGER_CANCELED:
             touchListener_->handleEvent(event);
             break;
         default:
             break;
         }
     }
+    syncSize();
+}
+
+void SdlWindowManager::syncSize() noexcept
+{
+    //! Android creates the window at the surface's own size and sends no resize for it, and a surface replaced while
+    //! the app was away can come back at another size without one either: the event alone leaves the size at the
+    //! one the window was asked for.
+    int width = 0;
+    int height = 0;
+    if (!window_ || !SDL_GetWindowSize(window_, &width, &height) || width <= 0 || height <= 0)
+        return;
+    if (width == windowDetails_.width && height == windowDetails_.height)
+        return;
+    windowDetails_.width = width;
+    windowDetails_.height = height;
+    windowFlags_.resized = true;
 }
 
 void SdlWindowManager::swapBuffers()
@@ -359,8 +397,9 @@ bool SdlWindowManager::waitUntilWindowReady()
 
 #ifdef __ANDROID__
     using namespace std::chrono_literals;
-    constexpr int kMaxAttempts = 100;       // ~5s at 50ms, then give up rather than hang
-    constexpr int kRequiredStablePolls = 4; // ~200ms unchanged before trusting it
+    // Short polls: this runs while the screen is blank, so each stable poll is a visible delay on resume.
+    constexpr int kMaxAttempts = 300;       // ~5s at 16ms, then give up rather than hang
+    constexpr int kRequiredStablePolls = 5; // ~80ms unchanged before trusting it
 
     int stablePolls = 0;
     void *lastNativeWindow = nullptr;
@@ -401,7 +440,7 @@ bool SdlWindowManager::waitUntilWindowReady()
         lastNativeWindow = usable ? nativeWindow : nullptr;
         lastW = usable ? w : -1;
         lastH = usable ? h : -1;
-        std::this_thread::sleep_for(50ms);
+        std::this_thread::sleep_for(16ms);
     }
     return false;
 #else
@@ -442,6 +481,19 @@ SoftwareFramebuffer SdlWindowManager::lockFramebuffer()
         SDL_LockSurface(surface);
 
     return SoftwareFramebuffer{surface->pixels, surface->w, surface->h, surface->pitch};
+}
+
+bool SdlWindowManager::presentWaitsForDisplay() const noexcept
+{
+    return surfaceVsync_;
+}
+
+u32 SdlWindowManager::displayRefreshHz() const noexcept
+{
+    if (!window_)
+        return 0;
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_));
+    return mode && mode->refresh_rate > 0.0f ? static_cast<u32>(std::lround(mode->refresh_rate)) : 0u;
 }
 
 void SdlWindowManager::presentFramebuffer()
@@ -493,6 +545,7 @@ WindowFlags *SdlWindowManager::getWindowFlags() noexcept
 }
 const WindowDetails *SdlWindowManager::getWindowDetails() noexcept
 {
+    syncSize();
     return &windowDetails_;
 }
 

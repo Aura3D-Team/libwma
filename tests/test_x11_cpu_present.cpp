@@ -133,6 +133,11 @@ int main()
         const auto id = reinterpret_cast<Window>(window->getWindowInstance());
         settle(*window);
 
+        const u32 hz = window->displayRefreshHz();
+        std::printf("display refresh: %u Hz\n", static_cast<unsigned>(hz));
+        // Xvfb reports modes without timings, so 0 ("unknown") is a valid answer here; a real server gives a rate.
+        check(hz <= 1000, "the display's refresh rate is zero or plausible");
+
         check(present(*window, kColor), "a frame can be presented");
         check(readCentre(*window) == kColor, "the presented pixels reach the window");
 
@@ -180,6 +185,71 @@ int main()
         check(unmapped, "frames keep flowing while the window is unmapped");
         XMapWindow(display, id);
         check(present(*window, kColor), "and after it is mapped again");
+
+        window->destroy();
+    }
+
+    // vsync: Present where the server has it, the rate cap otherwise. Both must keep frames flowing.
+    {
+        wma::WindowDetails details;
+        details.width = 320;
+        details.height = 240;
+        details.vsync = true;
+        details.targetFPS = 0;
+        auto window = wma::createWindowManager(wma::WindowBackend::X11, details, wma::GraphicsAPI::CPU);
+        window->createWindow("wma x11 vsync present");
+        auto *display = static_cast<Display *>(window->getNativeDisplayHandle());
+        const auto id = reinterpret_cast<Window>(window->getWindowInstance());
+        settle(*window);
+
+        // The first slot decides: a server that cannot map the segment as a pixmap withdraws Present.
+        bool flowing = present(*window, kColor);
+        window->swapBuffers();
+        const bool waits = window->presentWaitsForDisplay();
+        std::printf("vsync present: %s\n", waits ? "X Present" : "rate cap");
+        check(flowing, "a vsynced frame can be presented");
+        check(readCentre(*window) == kColor, "the vsynced pixels reach the window");
+
+        constexpr int kFrames = 30;
+        const auto begin = std::chrono::steady_clock::now();
+        for (int frame = 0; frame < kFrames && flowing; ++frame)
+        {
+            flowing = present(*window, kColor + static_cast<u32>(frame));
+            window->swapBuffers();
+        }
+        const std::chrono::duration<double, std::milli> elapsed = std::chrono::steady_clock::now() - begin;
+        std::printf("vsynced frame: %.2f ms\n", elapsed.count() / kFrames);
+        check(flowing, "thirty vsynced frames each present");
+        check(readCentre(*window) == kColor + (kFrames - 1), "the last frame is the one on screen");
+
+        // Nothing presented: swapBuffers() must block for input or a refresh, not spin.
+        const auto idleBegin = std::chrono::steady_clock::now();
+        window->swapBuffers();
+        const std::chrono::duration<double, std::milli> idle = std::chrono::steady_clock::now() - idleBegin;
+        std::printf("idle swap: %.2f ms\n", idle.count());
+        if (waits)
+            check(idle.count() >= 5.0, "an idle swapBuffers blocks instead of spinning");
+
+        bool churned = true;
+        for (int step = 0; step < 40 && churned; ++step)
+        {
+            const i32 width = 300 + (step % 7) * 20;
+            XResizeWindow(display, id, static_cast<unsigned>(width), 260);
+            pumpUntilSize(*window, width, 260);
+            churned = present(*window, kColor);
+            window->swapBuffers();
+        }
+        check(churned, "forty vsynced resize steps each present a frame");
+
+        XUnmapWindow(display, id);
+        XSync(display, False);
+        bool unmapped = true;
+        for (int frame = 0; frame < 10 && unmapped; ++frame)
+        {
+            unmapped = present(*window, kColor);
+            window->swapBuffers();
+        }
+        check(unmapped, "vsynced frames keep flowing while the window is unmapped");
 
         window->destroy();
     }

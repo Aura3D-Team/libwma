@@ -51,6 +51,8 @@ class SdlWindowManager : public IWindowManager
     [[nodiscard]] void *getMetalLayer() const noexcept override;
     SoftwareFramebuffer lockFramebuffer() override;
     void presentFramebuffer() override;
+    [[nodiscard]] bool presentWaitsForDisplay() const noexcept override;
+    [[nodiscard]] u32 displayRefreshHz() const noexcept override;
     u64 getSDLWindowFlags() const;
     WindowFlags *getWindowFlags() noexcept override;
     [[nodiscard]] FramebufferSize getFramebufferSize() noexcept override;
@@ -72,8 +74,9 @@ class SdlWindowManager : public IWindowManager
 
   private:
     SDL_Window *window_;
-    void *glContext_;     //!< SDL_GLContext (opaque) — OpenGL mode only
-    void *windowSurface_; //!< SDL_Surface* held between lock/present (CPU mode)
+    void *glContext_;           //!< SDL_GLContext (opaque) — OpenGL mode only
+    void *windowSurface_;       //!< SDL_Surface* held between lock/present (CPU mode)
+    bool surfaceVsync_ = false; //!< The window surface is held to the display (CPU mode)
 
     //! SDL_MetalView (opaque) — Metal mode only. SDL requires it be destroyed
     //! before its window, so it is owned here rather than left to
@@ -101,6 +104,8 @@ class SdlWindowManager : public IWindowManager
     bool ownsSubsystem_; //!< this instance holds a reference to the SDL init
 
     void handleWindowEvent(const SDL_Event *event);
+    //! Takes the window's size from SDL itself, for the cases where no resize event came.
+    void syncSize() noexcept;
     void initializeSDL();
 };
 

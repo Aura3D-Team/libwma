@@ -28,7 +28,13 @@ struct WindowFlags
     //! clears it.
     bool surfaceLost;
 
-    WindowFlags() : resized(false), minimized(false), focused(true), deltaTime(0), fps(0.0), surfaceLost(false)
+    //! The platform closed the on-screen keyboard itself (Android's back gesture), so text input is off though the
+    //! app never asked. Sticky until a poller clears it; the app should stop editing, or it would re-open at once.
+    bool textInputDismissed;
+
+    WindowFlags()
+        : resized(false), minimized(false), focused(true), deltaTime(0), fps(0.0), surfaceLost(false),
+          textInputDismissed(false)
     {
     }
 };

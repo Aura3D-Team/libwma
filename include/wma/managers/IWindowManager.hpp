@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "../core/Types.hpp"
@@ -238,6 +239,21 @@ class IWindowManager
     {
     }
 
+    //! CPU windows with WindowDetails::vsync set: true only if the loop is held to the display's refresh
+    //! by blocking, not by dropping frames: a backend that merely refuses them would spin.
+    //! When false, process() caps the loop at 60 Hz instead of running it uncapped.
+    [[nodiscard]] virtual bool presentWaitsForDisplay() const noexcept;
+
+    //! The refresh rate of the display the window is on, in whole Hz; 0 when the backend cannot tell. process() caps
+    //! at it, instead of 60, when the present does not wait.
+    [[nodiscard]] virtual u32 displayRefreshHz() const noexcept;
+
+    //! True once after the window changed display or the display changed mode, i.e. displayRefreshHz() may differ.
+    [[nodiscard]] bool takeDisplayChanged() noexcept
+    {
+        return std::exchange(displayChanged_, false);
+    }
+
     /**
      * @brief The window's drawable size in pixels.
      *
@@ -354,6 +370,15 @@ class IWindowManager
 
   protected:
     IWindowManager() = default;
+
+    //! Backends call this from their event handler; process() re-reads the refresh rate on the next frame.
+    void markDisplayChanged() noexcept
+    {
+        displayChanged_ = true;
+    }
+
+  private:
+    bool displayChanged_ = false;
 };
 
 using WindowManagerFactory = std::function<std::unique_ptr<IWindowManager>(const WindowDetails &)>;

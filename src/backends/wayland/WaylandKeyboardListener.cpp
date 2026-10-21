@@ -1,3 +1,7 @@
+// clang-format off
+// Must precede every Wayland header: it redirects libwayland's inline wrappers to the run-time loader.
+#include "backends/wayland/WaylandApi.hpp"
+// clang-format on
 #include "wma/backends/wayland/WaylandKeyboardListener.hpp"
 #include "wma/exceptions/WMAException.hpp"
 #include "wma/input/keyboard/Keys.h"
@@ -12,8 +16,6 @@
 
 #include <sys/mman.h>
 #include <unistd.h>
-#include <xkbcommon/xkbcommon-compose.h>
-#include <xkbcommon/xkbcommon.h>
 
 namespace wma
 {
@@ -103,7 +105,8 @@ void WaylandKeyboardListener::handleKeymap(u32 format, i32 fd, u32 size)
     if (fd < 0)
         return;
 
-    if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
+    //! Without libxkbcommon there is no way to read the keymap; the keyboard stays silent, the window works.
+    if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 || !wayland::hasXkb())
     {
         close(fd);
         return;

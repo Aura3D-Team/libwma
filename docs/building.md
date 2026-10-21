@@ -11,7 +11,7 @@ docker exec vulkan-dev bash -lc '
 
 ## Presets
 
-`linux-debug` · `linux-release` · `windows-debug` · `windows-release` ·
+`linux-debug` · `linux-release` · `linux-dist` · `windows-debug` · `windows-release` ·
 `macos-debug` · `macos-release` · `ios` · `android` · `wasm`
 
 ## Options
@@ -20,6 +20,8 @@ docker exec vulkan-dev bash -lc '
 |---|---|---|
 | `WMA_BUILD_TESTS` | `OFF` | `ctest` suite |
 | `WMA_BUILD_EXAMPLES` | | `examples/basic_window` |
+| `WMA_NATIVE_OPTIMIZE` | `OFF` | `-march=native`; machine-local builds only |
+| `WMA_CPU_LEVEL` | empty | x86-64 level for shipped builds, e.g. `x86-64-v2` |
 
 Backends are auto-detected and forced off where they cannot exist —
 Android/WASM are SDL3-only. Check what you got with `WMA_HAS_GLFW`, `WMA_HAS_SDL`,

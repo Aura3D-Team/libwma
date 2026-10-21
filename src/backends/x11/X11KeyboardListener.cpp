@@ -4,6 +4,8 @@
 #include "wma/input/keyboard/Keys.h"
 #include "wma/input/keyboard/Utf8.hpp"
 
+#include "backends/x11/X11Api.hpp"
+
 #include <array>
 #include <clocale>
 #include <string_view>

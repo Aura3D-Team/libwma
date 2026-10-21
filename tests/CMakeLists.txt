@@ -30,6 +30,14 @@ if(WMA_ENABLE_SDL)
     set_tests_properties(wma_test_cpu_pacing PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77)
 endif()
 
+# DynLib is private to the library (src/), so the test borrows its include path.
+if(WMA_ENABLE_X11 OR WMA_ENABLE_WAYLAND OR WMA_ENABLE_ALSA)
+    add_executable(wma_test_dynlib test_dynlib.cpp)
+    target_link_libraries(wma_test_dynlib PRIVATE wma)
+    target_include_directories(wma_test_dynlib PRIVATE "${PROJECT_SOURCE_DIR}/src")
+    add_test(NAME wma_test_dynlib COMMAND wma_test_dynlib)
+endif()
+
 # Threaded, unlike the decoder tests: MixCallbackSlot exists to make
 # setMixCallback() safe on a running device, and only two threads can show that.
 # Worth running under -fsanitize=thread, which is what turns a missed
@@ -84,7 +92,8 @@ endif()
 # Without it they report skipped (77) rather than failing a headless build.
 if(WMA_ENABLE_X11)
     add_executable(wma_test_x11_cpu_present test_x11_cpu_present.cpp)
-    target_link_libraries(wma_test_x11_cpu_present PRIVATE wma)
+    # Reads the framebuffer back with Xlib itself; wma binds libX11 at run time, so the test links it.
+    target_link_libraries(wma_test_x11_cpu_present PRIVATE wma X11::X11)
     add_test(NAME wma_test_x11_cpu_present COMMAND wma_test_x11_cpu_present)
     set_tests_properties(wma_test_x11_cpu_present PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77 RESOURCE_LOCK wma_test_display)
 

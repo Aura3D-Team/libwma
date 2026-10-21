@@ -2,6 +2,20 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.10.0]
+
+### Added
+
+- `selectUsableBackend()`: the preferred backend if it can run here, else the first that can (SDL3, Wayland, X11, GLFW).
+- `WMA_CPU_LEVEL`: x86-64 microarchitecture level for Release builds that are shipped. New `linux-dist` preset sets it.
+
+### Changed
+
+- **The X11, Wayland and ALSA backends bind their system libraries with `dlopen()`.** libwma no longer links libX11, libXext, libXi, libXrandr, libXpresent, libGLX, libwayland-client, libwayland-cursor, libwayland-egl, libxkbcommon, libEGL or libasound, so a program that uses it starts on a machine that lacks any of them. Their headers are still needed to build. A missing library costs only its feature: no X Present, XInput2 or RandR (the same fallbacks as a server without the extension), no OpenGL, no Wayland cursor theme or keyboard decoding, and for ALSA the audio chain moves on to the next backend.
+- `isBackendAvailable()` also checks that libX11 (X11) or libwayland-client (Wayland) can be loaded.
+- Wayland needs libwayland-client 1.19 or newer at run time (`wl_proxy_marshal_flags`). wma carries its own copies of wayland.xml's interface tables, named `wma_wl_*_interface`.
+- The installed CMake package no longer asks for X11, Wayland, EGL, xkbcommon or ALSA packages, and links only libdl.
+
 ## [0.9.0]
 
 ### Added

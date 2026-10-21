@@ -2,6 +2,10 @@
 #define _GNU_SOURCE
 #endif
 
+// clang-format off
+// Must precede every Wayland header: it redirects libwayland's inline wrappers to the run-time loader.
+#include "backends/wayland/WaylandApi.hpp"
+// clang-format on
 #include "wma/backends/wayland/WaylandWindowManager.hpp"
 #include "backends/wayland/WaylandClipboard.hpp"
 #include "wma/backends/wayland/protocols/pointer-constraints-unstable-v1-client-protocol.h"
@@ -206,6 +210,8 @@ void WaylandWindowManager::createWindow(const char *windowName)
 {
     if (role_ && graphicsAPI_ != GraphicsAPI::Vulkan)
         throw GraphicsException("Custom Wayland surface roles currently require Vulkan");
+    if (!wayland::load())
+        throw WindowException("libwayland-client.so.0 is not installed; the Wayland backend cannot run");
     display_ = wl_display_connect(nullptr);
     if (!display_)
         throw WindowException("Failed to connect to Wayland display (is WAYLAND_DISPLAY set?)");
@@ -295,6 +301,9 @@ void WaylandWindowManager::createWindow(const char *windowName)
 void WaylandWindowManager::initEGL()
 {
 #ifdef WMA_WAYLAND_HAS_GL
+    if (!wayland::hasEgl())
+        throw GraphicsException("OpenGL on Wayland needs libEGL.so.1 and libwayland-egl.so.1, and one is missing");
+
     auto eglDisplay = eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(display_));
     if (eglDisplay == EGL_NO_DISPLAY)
         throw GraphicsException("eglGetDisplay failed on Wayland");

@@ -1,0 +1,13 @@
+// X-macro list of the libasound entry points AlsaAudioDevice uses; WMA_SYM(name) per symbol.
+WMA_SYM(snd_pcm_close)
+WMA_SYM(snd_pcm_drop)
+WMA_SYM(snd_pcm_get_params)
+WMA_SYM(snd_pcm_hw_params_current)
+WMA_SYM(snd_pcm_hw_params_get_rate)
+WMA_SYM(snd_pcm_hw_params_sizeof)
+WMA_SYM(snd_pcm_open)
+WMA_SYM(snd_pcm_prepare)
+WMA_SYM(snd_pcm_recover)
+WMA_SYM(snd_pcm_set_params)
+WMA_SYM(snd_pcm_writei)
+WMA_SYM(snd_strerror)

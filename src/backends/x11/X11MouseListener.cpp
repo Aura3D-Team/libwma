@@ -3,10 +3,10 @@
 #include "wma/core/Types.hpp"
 #include "wma/exceptions/WMAException.hpp"
 
-#include <X11/Xutil.h>
 #include <X11/cursorfont.h>
-#include <X11/extensions/XInput2.h>
 #include <utility>
+
+#include "backends/x11/X11Api.hpp"
 
 namespace wma
 {
@@ -58,7 +58,8 @@ void X11MouseListener::initialize(Display *display, Window window)
     int firstError = 0;
     int major = 2;
     int minor = 0;
-    if (XQueryExtension(display, "XInputExtension", &xiOpcode_, &firstEvent, &firstError) &&
+    xiOpcode_ = 0;
+    if (x11::hasXInput2() && XQueryExtension(display, "XInputExtension", &xiOpcode_, &firstEvent, &firstError) &&
         XIQueryVersion(display, &major, &minor) != Success)
         xiOpcode_ = 0;
 

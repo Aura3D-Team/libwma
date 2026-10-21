@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 4.3.3)
 
 project(wma
-VERSION 0.9.0
+VERSION 0.10.0
 LANGUAGES C CXX
 )
 
@@ -28,6 +28,9 @@ option(WMA_ENABLE_LTO       "Enable link-time optimization"   ON)
 # -march=native produces non-portable binaries; keep OFF by default for a library
 # that may be installed and shipped. Enable it for machine-local builds.
 option(WMA_NATIVE_OPTIMIZE  "Enable native CPU optimization"  OFF)
+# x86-64 microarchitecture level (x86-64-v2, x86-64-v3, ...) for distributable builds; ignored with
+# WMA_NATIVE_OPTIMIZE and on other architectures. Empty keeps the compiler's baseline.
+set(WMA_CPU_LEVEL "" CACHE STRING "x86-64 microarchitecture level for Release builds (e.g. x86-64-v2)")
 
 include(cmake/PlatformSuffix.cmake)
 wma_platform_suffix(WMA_PLATFORM_SUFFIX)
@@ -155,6 +158,11 @@ target_compile_features(wma
         cxx_std_23
 )
 
+set(_wma_cpu_level_flag "")
+if(WMA_CPU_LEVEL AND NOT WMA_NATIVE_OPTIMIZE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    set(_wma_cpu_level_flag "-march=${WMA_CPU_LEVEL}")
+endif()
+
 target_compile_options(wma PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:
         $<$<CONFIG:Debug>:
@@ -170,6 +178,8 @@ target_compile_options(wma PRIVATE
             -march=native
             -mtune=native
         >
+
+        $<$<AND:$<CONFIG:Release>,$<BOOL:${_wma_cpu_level_flag}>>:${_wma_cpu_level_flag}>
     >
 
     $<$<CXX_COMPILER_ID:MSVC>:
@@ -226,26 +236,43 @@ if(WMA_NEEDS_MULTIDEF_FIX)
     target_link_options(wma PUBLIC "-Wl,--allow-multiple-definition")
 endif()
 
+# The ALSA, X11 and Wayland client libraries are bound with dlopen() (src/platform/DynLib.hpp), never linked: a
+# machine without one loses that backend, not the whole program. Their targets are therefore used for their include
+# directories only, which also keeps them out of the exported link interface.
+function(_wma_headers_of)
+    foreach(_target IN LISTS ARGN)
+        target_include_directories(wma SYSTEM PRIVATE "$<TARGET_PROPERTY:${_target},INTERFACE_INCLUDE_DIRECTORIES>")
+    endforeach()
+endfunction()
+
+if(WMA_ENABLE_ALSA OR WMA_ENABLE_X11 OR WMA_ENABLE_WAYLAND)
+    target_link_libraries(wma PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
 if(WMA_ENABLE_ALSA)
     target_compile_definitions(wma PRIVATE WMA_ENABLE_ALSA)
-    target_link_libraries(wma PRIVATE PkgConfig::ALSA)
+    _wma_headers_of(PkgConfig::ALSA)
 endif()
 
 if(WMA_ENABLE_X11)
     target_compile_definitions(wma PRIVATE WMA_ENABLE_X11)
-    target_link_libraries(wma PRIVATE X11::X11 X11::Xext X11::Xi X11::Xrandr X11::Xpresent)
+    _wma_headers_of(X11::X11 X11::Xext X11::Xi X11::Xrandr X11::Xpresent)
 
     # OpenGL on X11 is done through GLX. Optional: if libGL/GLX is unavailable the
     # backend still builds and simply reports OpenGL as unsupported at runtime.
     if(WMA_ENABLE_X11_GL)
-        target_link_libraries(wma PRIVATE OpenGL::GLX)
+        _wma_headers_of(OpenGL::GLX)
         target_compile_definitions(wma PRIVATE WMA_X11_HAS_GL)
     endif()
 endif()
 
 if(WMA_ENABLE_WAYLAND)
     target_compile_definitions(wma PRIVATE WMA_ENABLE_WAYLAND)
-    target_link_libraries(wma PRIVATE PkgConfig::WAYLAND)
+    _wma_headers_of(PkgConfig::WAYLAND)
+    target_include_directories(wma PRIVATE ${WMA_PRIVATE_INCLUDE_DIR})
+    # Every generated protocol table names wayland.xml's interfaces; they must name wma's copies.
+    set_source_files_properties(${WMA_WAYLAND_GENERATED_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-include;${WMA_PRIVATE_INCLUDE_DIR}/wma_wayland_core_rename.h")
 
     # Generated protocol marshalling code (defines xdg_wm_base_interface & co.,
     # which the client headers only declare) — see cmake/Dependencies.cmake.
@@ -253,7 +280,7 @@ if(WMA_ENABLE_WAYLAND)
 
     # OpenGL on Wayland is done through EGL + wayland-egl (optional, as above).
     if(WMA_ENABLE_WAYLAND_GL)
-        target_link_libraries(wma PRIVATE PkgConfig::WAYLAND_EGL)
+        _wma_headers_of(PkgConfig::WAYLAND_EGL)
         target_compile_definitions(wma PRIVATE WMA_WAYLAND_HAS_GL)
     endif()
 

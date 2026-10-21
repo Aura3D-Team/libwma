@@ -1,3 +1,7 @@
+// clang-format off
+// Must precede every Wayland header: it redirects libwayland's inline wrappers to the run-time loader.
+#include "backends/wayland/WaylandApi.hpp"
+// clang-format on
 #include "backends/wayland/WaylandClipboard.hpp"
 
 #include <fcntl.h>

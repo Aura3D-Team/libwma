@@ -26,7 +26,8 @@ window->createWindow("My Game");
 ```
 
 `getDefaultBackend()` picks what the build actually has, so this line needs no
-`#ifdef` on desktop, Android or WASM.
+`#ifdef` on desktop, Android or WASM. To fall back when a library is missing at run
+time, see [portability.md](portability.md).
 
 ## Frame loop
 

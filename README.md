@@ -95,6 +95,7 @@ C++ formatting and static analysis: [local commands and CI scope](docs/code-qual
 - At least one backend SDK: **SDL3 3.2+**, **GLFW 3.4+**, **Xlib**, or **Wayland**
 - X11 backend: `libXext`, `libXi`, `libXrandr` and `libXpresent` development packages
 - Optional for OpenGL on the native backends: GLX (X11) / EGL + `wayland-egl` (Wayland)
+- Those are build-time only: the X11, Wayland and ALSA libraries are opened at run time ([portability](docs/portability.md))
 
 ### Desktop build & install
 

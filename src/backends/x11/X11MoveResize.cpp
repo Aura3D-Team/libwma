@@ -1,6 +1,6 @@
 #include "backends/x11/X11MoveResize.hpp"
 
-#include <X11/Xlib.h>
+#include "backends/x11/X11Api.hpp"
 
 namespace wma::x11
 {
@@ -42,7 +42,7 @@ bool startMoveResize(Display *display, unsigned long window, WindowHit hit, int 
                      unsigned int button) noexcept
 {
     const long action = direction(hit);
-    if (!display || !window || action < 0)
+    if (!display || !window || action < 0 || !load())
         return false;
 
     //! The press's implicit grab would otherwise keep the pointer from the window manager.
@@ -66,7 +66,7 @@ bool startMoveResize(Display *display, unsigned long window, WindowHit hit, int 
 
 bool startMoveResize(Display *display, unsigned long window, WindowHit hit) noexcept
 {
-    if (!display || !window)
+    if (!display || !window || !load())
         return false;
 
     ::Window root = 0;

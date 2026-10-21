@@ -1,6 +1,12 @@
 #ifndef WMA_BACKENDS_WAYLAND_WINDOW_MANAGER_HPP
 #define WMA_BACKENDS_WAYLAND_WINDOW_MANAGER_HPP
 
+#ifdef WMA_ENABLE_WAYLAND
+#ifndef WMA_BACKENDS_WAYLAND_API_HPP
+#error "backends/wayland/WaylandApi.hpp must be included before this header inside libwma"
+#endif
+#endif
+
 #include "WaylandKeyboardListener.hpp"
 #include "WaylandMouseListener.hpp"
 #include "wma/WaylandSurfaceRole.hpp"

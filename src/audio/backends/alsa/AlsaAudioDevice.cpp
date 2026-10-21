@@ -6,11 +6,12 @@
 #include <thread>
 #include <utility>
 
-#include <alsa/asoundlib.h>
 #include <pthread.h>
 #include <sched.h>
 
 #include <ink/Inkogger.h>
+
+#include "audio/backends/alsa/AlsaApi.hpp"
 
 namespace wma
 {
@@ -87,6 +88,13 @@ WmaCode AlsaAudioDevice::open(const AudioDeviceConfig &config)
 {
     if (!config.valid())
         return WmaCode::Error;
+
+    //! A machine without libasound is the same case as one without sound hardware: the factory moves on.
+    if (!alsa::load())
+    {
+        INK_WARN << "[wma] libasound.so.2 is not installed";
+        return WmaCode::Error;
+    }
 
     if (_pcm)
         close();

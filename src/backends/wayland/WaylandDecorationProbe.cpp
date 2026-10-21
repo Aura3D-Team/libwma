@@ -1,3 +1,7 @@
+// clang-format off
+// Must precede every Wayland header: it redirects libwayland's inline wrappers to the run-time loader.
+#include "backends/wayland/WaylandApi.hpp"
+// clang-format on
 #include "backends/wayland/WaylandDecorationProbe.hpp"
 
 #include <cstdlib>
@@ -5,7 +9,6 @@
 #include <string_view>
 
 #include <dirent.h>
-#include <wayland-client.h>
 
 #include <ink/ink_base.hpp>
 
@@ -16,7 +19,7 @@ namespace wma::wayland
 
 bool offersServerDecorations(wl_display *display) noexcept
 {
-    if (!display)
+    if (!display || !load())
         return false;
 
     wl_event_queue *queue = wl_display_create_queue(display);

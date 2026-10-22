@@ -53,6 +53,7 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_PREFIX_PATH": "$env{LOCAL_PREFIX}",
         "WMA_CPU_LEVEL": "x86-64-v2",
+        "WMA_ENABLE_LTO": "OFF",
         "WMA_ENABLE_SDL": "ON",
         "WMA_ENABLE_X11": "ON",
         "WMA_ENABLE_WAYLAND": "ON",

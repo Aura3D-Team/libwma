@@ -15,6 +15,7 @@ All notable changes to libwma are documented in this file.
 - `isBackendAvailable()` also checks that libX11 (X11) or libwayland-client (Wayland) can be loaded.
 - Wayland needs libwayland-client 1.20 or newer at run time (`wl_proxy_marshal_flags`). wma carries its own copies of wayland.xml's interface tables, named `wma_wl_*_interface`.
 - The installed CMake package no longer asks for X11, Wayland, EGL, xkbcommon or ALSA packages, and links only libdl.
+- `linux-dist` builds without LTO: an archive of LTO objects links only with the exact compiler that built it.
 
 ## [0.9.0]
 

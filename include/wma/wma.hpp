@@ -61,8 +61,9 @@ createWindowManager(WindowBackend backend, const WindowDetails &windowDetails, G
 //! (libX11, libwayland-client) are installed. Those are loaded at run time, never linked.
 [[nodiscard]] bool isBackendAvailable(WindowBackend backend) noexcept;
 
-//! @p preferred when isBackendAvailable() and, for Wayland and X11, the session has that display server
-//! ($WAYLAND_DISPLAY, $DISPLAY); else the first backend that does (SDL3, Wayland, X11, GLFW).
+//! @p preferred when isBackendAvailable() and, on desktop Linux, the session has a display server it can use
+//! (Wayland, X11, GLFW); else the first backend that does (SDL3, Wayland, X11, GLFW). SDL3 is never ruled out
+//! for want of one: it also runs on a console (KMSDRM), and headless with SDL_VIDEO_DRIVER=dummy.
 //! @throws WMAException if none can run.
 [[nodiscard]] WindowBackend selectUsableBackend(WindowBackend preferred);
 

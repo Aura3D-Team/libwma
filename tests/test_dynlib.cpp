@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 
 #include "platform/DynLib.hpp"
 #include "wma/wma.hpp"
@@ -44,14 +45,38 @@ int main()
     check(!wma::dynlib::bind(nullptr, good) && !cosine && !sine, "no library: bind fails and clears the slots");
     check(wma::dynlib::symbol(nullptr, "cos") == nullptr, "symbol() on no library is nullptr");
 
-    for (const wma::WindowBackend backend :
-         {wma::WindowBackend::GLFW, wma::WindowBackend::SDL3, wma::WindowBackend::X11, wma::WindowBackend::WAYLAND})
+    // The session is pinned both ways, so the answer does not depend on the machine running the test.
+    constexpr std::array<wma::WindowBackend, 4> backends{wma::WindowBackend::GLFW, wma::WindowBackend::SDL3,
+                                                         wma::WindowBackend::X11, wma::WindowBackend::WAYLAND};
+    setenv("DISPLAY", ":wma-test", 1);
+    setenv("WAYLAND_DISPLAY", "wma-test", 1);
+    for (const wma::WindowBackend backend : backends)
     {
-        // Whatever is asked for, the answer is something that can run here.
         check(wma::isBackendAvailable(wma::selectUsableBackend(backend)),
-              "selectUsableBackend returns a usable backend");
+              "with a display: selectUsableBackend returns a usable backend");
         if (wma::isBackendAvailable(backend))
-            check(wma::selectUsableBackend(backend) == backend, "a usable preference is kept");
+            check(wma::selectUsableBackend(backend) == backend, "with a display: a usable preference is kept");
+    }
+
+    for (const char *name : {"DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XDG_RUNTIME_DIR"})
+        unsetenv(name);
+    for (const wma::WindowBackend backend : {wma::WindowBackend::GLFW, wma::WindowBackend::X11,
+                                             wma::WindowBackend::WAYLAND})
+    {
+        if (wma::isBackendAvailable(wma::WindowBackend::SDL3))
+        {
+            check(wma::selectUsableBackend(backend) == wma::WindowBackend::SDL3, "headless: falls back to SDL3");
+            continue;
+        }
+        try
+        {
+            (void)wma::selectUsableBackend(backend);
+            check(false, "headless without SDL3: throws");
+        }
+        catch (const wma::WMAException &)
+        {
+            check(true, "headless without SDL3: throws");
+        }
     }
 
     return failures == 0 ? 0 : 1;

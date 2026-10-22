@@ -11,7 +11,7 @@ that has none of them. The `-dev` packages are still needed to **build**.
 | `libX11.so.6` | no X11 backend |
 | `libXext`, `libXi`, `libXrandr`, `libXpresent` | no MIT-SHM, raw mouse motion, refresh-rate pacing, X Present: the same fallbacks as a server without the extension |
 | `libGLX.so.0` / `libGL.so.1` | no OpenGL on X11 |
-| `libwayland-client.so.0` | no Wayland backend (needs 1.19+) |
+| `libwayland-client.so.0` | no Wayland backend (needs 1.20+) |
 | `libxkbcommon.so.0` | Wayland window works, keyboard stays silent |
 | `libwayland-cursor.so.0` | compositor's default cursor only |
 | `libEGL.so.1`, `libwayland-egl.so.1` | no OpenGL on Wayland |
@@ -28,8 +28,18 @@ auto backend = wma::selectUsableBackend(wma::WindowBackend::WAYLAND);  // SDL3, 
 auto window  = wma::createWindowManager(backend, config, wma::GraphicsAPI::CPU);
 ```
 
-A backend qualifies when it is compiled in, its libraries load (`isBackendAvailable()`), and the session has its
-display server (`$WAYLAND_DISPLAY`, `$DISPLAY`). A machine with no display at all gets SDL3 and its dummy driver.
+A backend qualifies when it is compiled in, its libraries load (`isBackendAvailable()`), and the session has a
+display server it can use:
+
+| Backend | Display server |
+|---|---|
+| Wayland | `$WAYLAND_SOCKET`, `$WAYLAND_DISPLAY`, or `wayland-0` in `$XDG_RUNTIME_DIR` |
+| X11 | `$DISPLAY` |
+| GLFW | either of the above |
+| SDL3 | always: it also runs on a console (KMSDRM) |
+
+With no display at all the answer is SDL3, which then needs `SDL_VIDEO_DRIVER=dummy`; it never picks that driver
+by itself. Without SDL3 compiled in, `selectUsableBackend()` throws.
 
 ## Shipping a binary
 

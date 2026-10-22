@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstdlib>
+#include <filesystem>
+#include <system_error>
 
 //! This TU is compiled INTO the library, where the private WMA_ENABLE_* backend
 //! macros and the backend SDK headers are visible. Keeping the factory here (rather
@@ -88,22 +90,35 @@ bool isBackendAvailable(WindowBackend backend) noexcept
 namespace
 {
 
-//! Whether the session has a display server this backend can talk to. SDL3 and GLFW find their own.
+#if defined(__linux__) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+bool isSet(const char *name) noexcept
+{
+    const char *value = std::getenv(name);
+    return value && *value;
+}
+
+//! libwayland's own order: an inherited socket, $WAYLAND_DISPLAY, then wayland-0 in the runtime directory.
+bool hasWaylandDisplay() noexcept
+{
+    if (isSet("WAYLAND_SOCKET") || isSet("WAYLAND_DISPLAY"))
+        return true;
+    const char *runtimeDir = std::getenv("XDG_RUNTIME_DIR");
+    std::error_code error;
+    return runtimeDir && *runtimeDir && std::filesystem::exists(std::filesystem::path(runtimeDir) / "wayland-0", error);
+}
+#endif
+
+//! Whether the session has a display server this backend can talk to.
 bool hasDisplayServer(WindowBackend backend) noexcept
 {
-#ifdef WMA_ENABLE_WAYLAND
+#if defined(__linux__) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
     if (backend == WindowBackend::WAYLAND)
-    {
-        const char *display = std::getenv("WAYLAND_DISPLAY");
-        return display && *display;
-    }
-#endif
-#ifdef WMA_ENABLE_X11
+        return hasWaylandDisplay();
     if (backend == WindowBackend::X11)
-    {
-        const char *display = std::getenv("DISPLAY");
-        return display && *display;
-    }
+        return isSet("DISPLAY");
+    //! GLFW has no headless platform it falls back to. SDL3 is not checked: it also runs on a bare console (KMSDRM).
+    if (backend == WindowBackend::GLFW)
+        return isSet("DISPLAY") || hasWaylandDisplay();
 #endif
     (void)backend;
     return true;
@@ -124,13 +139,7 @@ WindowBackend selectUsableBackend(WindowBackend preferred)
         if (isBackendAvailable(candidate) && hasDisplayServer(candidate))
             return candidate;
     }
-    //! A headless machine: no backend has a display, and SDL3's dummy driver is still better than failing here.
-    for (const WindowBackend candidate : kFallbacks)
-    {
-        if (isBackendAvailable(candidate))
-            return candidate;
-    }
-    throw WMAException("No window backend can run on this machine");
+    throw WMAException("No window backend can run here: no display server, and SDL3 is not compiled in");
 }
 
 const char *getLibraryInfo() noexcept

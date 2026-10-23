@@ -60,8 +60,8 @@ int main()
 
     for (const char *name : {"DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET", "XDG_RUNTIME_DIR"})
         unsetenv(name);
-    for (const wma::WindowBackend backend : {wma::WindowBackend::GLFW, wma::WindowBackend::X11,
-                                             wma::WindowBackend::WAYLAND})
+    for (const wma::WindowBackend backend :
+         {wma::WindowBackend::GLFW, wma::WindowBackend::X11, wma::WindowBackend::WAYLAND})
     {
         if (wma::isBackendAvailable(wma::WindowBackend::SDL3))
         {

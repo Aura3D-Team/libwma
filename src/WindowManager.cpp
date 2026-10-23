@@ -132,8 +132,8 @@ WindowBackend selectUsableBackend(WindowBackend preferred)
         return preferred;
 
     //! SDL3 first: it is the one that binds its own libraries and works on the most machines.
-    constexpr std::array<WindowBackend, 4> kFallbacks{WindowBackend::SDL3, WindowBackend::WAYLAND,
-                                                      WindowBackend::X11, WindowBackend::GLFW};
+    constexpr std::array<WindowBackend, 4> kFallbacks{WindowBackend::SDL3, WindowBackend::WAYLAND, WindowBackend::X11,
+                                                      WindowBackend::GLFW};
     for (const WindowBackend candidate : kFallbacks)
     {
         if (isBackendAvailable(candidate) && hasDisplayServer(candidate))

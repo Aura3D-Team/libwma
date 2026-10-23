@@ -1,3 +1,7 @@
+// clang-format off
+// Must precede every Wayland header: it redirects libwayland's inline wrappers to the run-time loader.
+#include "backends/wayland/WaylandApi.hpp"
+// clang-format on
 #include "wma/backends/wayland/WaylandMouseListener.hpp"
 #include "wma/backends/wayland/WaylandWindowManager.hpp"
 #include "wma/core/Types.hpp"
@@ -39,7 +43,8 @@ constexpr std::array<CursorNames, wma::SYSTEM_CURSOR_COUNT> kCursorNames{{
     {
         if (!name)
             break;
-        if (wl_cursor *cursor = wl_cursor_theme_get_cursor(theme, name))
+        //! Qualified: this namespace sits outside wma, where the pointer would not hide the C function.
+        if (wl_cursor *cursor = wma::wl_cursor_theme_get_cursor(theme, name))
             return cursor;
     }
     return shape == wma::SystemCursor::Default ? nullptr : loadCursor(theme, wma::SystemCursor::Default);
@@ -129,7 +134,7 @@ void WaylandMouseListener::initialize(wl_pointer *pointer, wl_compositor *compos
     {
         cursorSurface_ = wl_compositor_create_surface(compositor);
     }
-    if (shm)
+    if (shm && wayland::hasCursor())
     {
         //! nullptr theme name asks the compositor for its configured default
         //! theme rather than pinning one by name, so this follows whatever

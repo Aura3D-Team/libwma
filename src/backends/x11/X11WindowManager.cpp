@@ -1,5 +1,6 @@
 #ifdef WMA_ENABLE_X11
 #include "wma/backends/x11/X11WindowManager.hpp"
+#include "backends/x11/X11Api.hpp"
 #include "backends/x11/X11Clipboard.hpp"
 #include "backends/x11/X11MoveResize.hpp"
 #include "wma/exceptions/WMAException.hpp"
@@ -18,15 +19,7 @@
 #include <sys/shm.h>
 #include <utility>
 
-//! For XkbSetDetectableAutoRepeat; see createWindow().
-#include <X11/XKBlib.h>
 #include <X11/Xatom.h>
-#include <X11/extensions/Xpresent.h>
-#include <X11/extensions/Xrandr.h>
-
-#ifdef WMA_X11_HAS_GL
-#include <GL/glx.h>
-#endif
 
 namespace wma
 {
@@ -138,6 +131,13 @@ void X11WindowManager::createWindow(const char *windowName)
         throw GraphicsException("Metal is an Apple-only graphics API and X11 is a Linux/Unix display "
                                 "protocol; the two can never pair (use Vulkan/OpenGL/CPU)");
     }
+
+    if (!x11::load())
+        throw WindowException("libX11.so.6 is not installed; the X11 backend cannot run");
+#ifdef WMA_X11_HAS_GL
+    if (graphicsAPI_ == GraphicsAPI::OpenGL && !x11::hasGlx())
+        throw GraphicsException("OpenGL on X11 needs libGLX.so.0 or libGL.so.1, and neither is installed");
+#endif
 
     display_ = XOpenDisplay(nullptr);
     if (!display_)
@@ -261,7 +261,7 @@ void X11WindowManager::createWindow(const char *windowName)
 
     int randrError = 0;
     int randrBase = 0;
-    if (XRRQueryExtension(display_, &randrBase, &randrError))
+    if (x11::hasRandr() && XRRQueryExtension(display_, &randrBase, &randrError))
     {
         randrEventBase_ = randrBase;
         XRRSelectInput(display_, window_, RRScreenChangeNotifyMask);
@@ -294,7 +294,7 @@ void X11WindowManager::createWindow(const char *windowName)
     else if (graphicsAPI_ == GraphicsAPI::CPU)
     {
         gc_ = XCreateGC(display_, window_, 0, nullptr);
-        if (XShmQueryExtension(display_))
+        if (x11::hasShm() && XShmQueryExtension(display_))
             shmCompletion_ = XShmGetEventBase(display_) + ShmCompletion;
         if (windowDetails_.vsync)
             setupPresent();
@@ -361,7 +361,7 @@ void X11WindowManager::refreshMaximized() noexcept
     unsigned char *property = nullptr;
     const int result = XGetWindowProperty(display_, window_, netWmState_, 0, 1024, False, XA_ATOM, &actualType,
                                           &actualFormat, &count, &remaining, &property);
-    std::unique_ptr<unsigned char, decltype(&XFree)> owner(property, &XFree);
+    std::unique_ptr<unsigned char, int (*)(void *)> owner(property, XFree);
     if (result != Success || actualType != XA_ATOM || actualFormat != 32 || !property)
         return;
 
@@ -546,8 +546,8 @@ void X11WindowManager::setupPresent()
     int shmMinor = 0;
     Bool sharedPixmaps = False;
     //! Pixmaps over the segment are what Present flips; without them the frame would need a copy per present.
-    if (shmCompletion_ < 0 || !XShmQueryVersion(display_, &shmMajor, &shmMinor, &sharedPixmaps) || !sharedPixmaps ||
-        !XPresentQueryExtension(display_, &opcode, &eventBase, &errorBase) ||
+    if (shmCompletion_ < 0 || !x11::hasPresent() || !XShmQueryVersion(display_, &shmMajor, &shmMinor, &sharedPixmaps) ||
+        !sharedPixmaps || !XPresentQueryExtension(display_, &opcode, &eventBase, &errorBase) ||
         !XPresentQueryVersion(display_, &major, &minor) || major < 1)
         return;
     presentEventId_ = XPresentSelectInput(display_, window_, PresentCompleteNotifyMask | PresentIdleNotifyMask);
@@ -893,7 +893,7 @@ bool X11WindowManager::isTextInputEnabled() const noexcept
 
 u32 X11WindowManager::displayRefreshHz() const noexcept
 {
-    if (!display_)
+    if (!display_ || !x11::hasRandr())
         return 0;
 
     const Window root = DefaultRootWindow(display_);

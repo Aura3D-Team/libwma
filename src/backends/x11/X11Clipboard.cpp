@@ -10,6 +10,8 @@
 
 #include "wma/input/keyboard/Utf8.hpp"
 
+#include "backends/x11/X11Api.hpp"
+
 namespace wma
 {
 namespace

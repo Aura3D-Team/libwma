@@ -16,8 +16,7 @@
 #endif
 
 #ifdef WMA_ENABLE_WAYLAND
-#include <wayland-client.h>
-
+#include "backends/wayland/WaylandApi.hpp"
 #include "backends/wayland/WaylandDecorationProbe.hpp"
 #endif
 
@@ -49,7 +48,7 @@ void selectWaylandFrame() noexcept
 {
 #if defined(WMA_ENABLE_WAYLAND) && defined(GLFW_WAYLAND_LIBDECOR)
     //! GLFW has not connected yet, so the probe needs a connection of its own.
-    wl_display *display = wl_display_connect(nullptr);
+    wl_display *display = wayland::load() ? wl_display_connect(nullptr) : nullptr;
     if (!display)
         return;
     const bool serverSide = wayland::offersServerDecorations(display);

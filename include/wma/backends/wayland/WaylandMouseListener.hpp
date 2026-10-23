@@ -1,6 +1,12 @@
 #ifndef WMA_BACKENDS_WAYLAND_MOUSE_LISTENER_HPP
 #define WMA_BACKENDS_WAYLAND_MOUSE_LISTENER_HPP
 
+#ifdef WMA_ENABLE_WAYLAND
+#ifndef WMA_BACKENDS_WAYLAND_API_HPP
+#error "backends/wayland/WaylandApi.hpp must be included before this header inside libwma"
+#endif
+#endif
+
 #include "wma/input/mouse/MouseListener.hpp"
 #include <array>
 #include <wayland-client.h>

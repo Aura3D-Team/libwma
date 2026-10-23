@@ -8,8 +8,8 @@
 
 #ifdef WMA_ENABLE_WAYLAND
 #include <linux/input-event-codes.h>
-#include <wayland-client.h>
 
+#include "backends/wayland/WaylandApi.hpp"
 #include "backends/wayland/WaylandDecorationProbe.hpp"
 #include "wma/backends/wayland/protocols/xdg-shell-client-protocol.h"
 #endif
@@ -214,7 +214,7 @@ FrameHitTest::FrameHitTest(SDL_Window *window, HitTest hitTest) : window_(window
             static_cast<wl_display *>(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr));
         auto *surface =
             static_cast<wl_surface *>(SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr));
-        if (display && surface)
+        if (display && surface && wayland::load())
             wayland_ = std::make_unique<WaylandSeats>(display, surface);
     }
 #endif

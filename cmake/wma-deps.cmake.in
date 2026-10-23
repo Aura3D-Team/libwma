@@ -15,31 +15,5 @@ if(@WMA_ENABLE_GLFW@)
     find_dependency(glfw3)
 endif()
 
-if(@WMA_ENABLE_X11@)
-    find_dependency(X11)
-    if(@WMA_ENABLE_X11_GL@)
-        find_dependency(OpenGL COMPONENTS OpenGL GLX)
-    endif()
-endif()
-
-if(@WMA_ENABLE_WAYLAND@)
-    find_dependency(PkgConfig)
-    pkg_check_modules(WAYLAND REQUIRED IMPORTED_TARGET
-        wayland-client
-        wayland-cursor
-        xkbcommon
-    )
-    if(@WMA_ENABLE_WAYLAND_GL@)
-        pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET egl wayland-egl)
-    endif()
-endif()
-
-# The ALSA audio backend. Needed here even though it is linked PRIVATE: wma is a
-# static library, so its private dependencies still have to resolve at the
-# consumer's final link and CMake carries them in the exported interface as
-# $<LINK_ONLY:PkgConfig::ALSA>. Without this, configuring a consumer fails with
-# "target PkgConfig::ALSA not found".
-if(@WMA_ENABLE_ALSA@)
-    find_dependency(PkgConfig)
-    pkg_check_modules(ALSA REQUIRED IMPORTED_TARGET alsa)
-endif()
+# X11, Wayland, ALSA, EGL and xkbcommon are deliberately absent: wma binds them with dlopen() and only needs their
+# headers to build, so a consumer links none of them (see src/platform/DynLib.hpp).

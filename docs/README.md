@@ -9,6 +9,7 @@ Platform windowing, input and audio. C++23, static library.
 | [windowing.md](windowing.md) | Link it, open a window, run a frame loop. |
 | [input.md](input.md) | Keyboard, mouse, text input. |
 | [audio.md](audio.md) | Open a device, feed it samples. |
+| [portability.md](portability.md) | What a machine needs to run it, and how to ship a binary. |
 
 Everything public is behind `#include <wma/wma.hpp>` and lives in `namespace wma`.
 Backend headers (`SdlWindowManager.hpp`, …) are not in that umbrella on purpose —

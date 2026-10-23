@@ -57,8 +57,15 @@ createWindowManager(WindowBackend backend, const WindowDetails &windowDetails, G
 //! The preferred backend compiled into this build (SDL3 on WASM/Android).
 [[nodiscard]] WindowBackend getDefaultBackend();
 
-//! Whether @p backend was compiled into the library.
+//! Whether @p backend can run here: compiled into the library and, for X11 and Wayland, its system libraries
+//! (libX11, libwayland-client) are installed. Those are loaded at run time, never linked.
 [[nodiscard]] bool isBackendAvailable(WindowBackend backend) noexcept;
+
+//! @p preferred when isBackendAvailable() and, on desktop Linux, the session has a display server it can use
+//! (Wayland, X11, GLFW); else the first backend that does (SDL3, Wayland, X11, GLFW). SDL3 is never ruled out
+//! for want of one: it also runs on a console (KMSDRM), and headless with SDL_VIDEO_DRIVER=dummy.
+//! @throws WMAException if none can run.
+[[nodiscard]] WindowBackend selectUsableBackend(WindowBackend preferred);
 
 /**
  * @brief Create an audio device for @p backend, without opening it.

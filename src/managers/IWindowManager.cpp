@@ -32,11 +32,11 @@ namespace
 struct WebLoopContext
 {
     IWindowManager *manager;
-    std::function<void()> actions;
+    std::function<bool()> frame;
     FrameTimer timer;
 
-    WebLoopContext(IWindowManager *m, std::function<void()> &&a)
-        : manager(m), actions(std::move(a)), timer(*m->getWindowFlags())
+    WebLoopContext(IWindowManager *m, std::function<bool()> &&f)
+        : manager(m), frame(std::move(f)), timer(*m->getWindowFlags())
     {
     }
 };
@@ -54,26 +54,26 @@ void webLoopTick(void *userData)
 
     ctx->timer.beginFrame();
     ctx->manager->pollEvents();
-    ctx->actions();
-    ctx->manager->swapBuffers();
+    if (ctx->frame())
+        ctx->manager->swapBuffers();
     ctx->timer.endFrame();
 }
 
 } // namespace
 
-void IWindowManager::process(std::function<void()> &&actions)
+void IWindowManager::processFrames(std::function<bool()> &&frame)
 {
     //! Heap-allocated so it outlives this call. simulate_infinite_loop=true keeps
     //! process() from returning (matching desktop's blocking semantics) so the
     //! caller's window and callback stay alive while the browser drives the loop.
-    auto *ctx = new WebLoopContext(this, std::move(actions));
+    auto *ctx = new WebLoopContext(this, std::move(frame));
     //! fps = 0 => use requestAnimationFrame (respects the display refresh rate).
     emscripten_set_main_loop_arg(webLoopTick, ctx, 0, /*simulate_infinite_loop=*/true);
 }
 
 #else
 
-void IWindowManager::process(std::function<void()> &&actions)
+void IWindowManager::processFrames(std::function<bool()> &&frame)
 {
     FrameTimer timer(*getWindowFlags());
     const WindowDetails &details = *getWindowDetails();
@@ -98,12 +98,22 @@ void IWindowManager::process(std::function<void()> &&actions)
         }
         timer.setTargetFPS(detail::effectiveTargetFPS(details, api, waits, refreshHz));
 
-        actions();
-        swapBuffers();
+        if (frame())
+            swapBuffers();
         timer.endFrame();
     }
 }
 
 #endif
+
+void IWindowManager::process(std::function<void()> &&actions)
+{
+    processFrames(
+        [actions = std::move(actions)]
+        {
+            actions();
+            return true;
+        });
+}
 
 } // namespace wma

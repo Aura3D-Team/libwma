@@ -28,6 +28,8 @@ namespace wma
  *   - process(): a managed blocking run-loop. On Emscripten/WASM it hands the
  *     loop to the browser (via emscripten_set_main_loop) and returns
  *     immediately, because a blocking while-loop cannot run there.
+ *     processFrames() is the same loop for a caller that does not draw on
+ *     every iteration.
  *   - Manual stepping: call pollEvents(), render, then swapBuffers() yourself.
  *     Works identically on every platform.
  */
@@ -109,6 +111,17 @@ class IWindowManager
      * swapBuffers()/shouldClose(), so backends do not reimplement it.
      */
     void process(std::function<void()> &&actions);
+
+    /**
+     * @brief process() for a caller that does not draw on every iteration.
+     *
+     * @p frame returns whether it drew. An iteration that did not skips
+     * swapBuffers(): an OpenGL swap would present a back buffer nothing was
+     * drawn into, and a CPU window would wait for a present that never came.
+     * The window keeps showing the last frame. Waiting while idle is up to
+     * @p frame (waitEvents()), or the loop spins.
+     */
+    void processFrames(std::function<bool()> &&frame);
 
     //! Pump the OS event queue once (non-blocking). Safe to call every frame.
     virtual void pollEvents() = 0;

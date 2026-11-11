@@ -5,6 +5,10 @@ add_executable(wma_test_utf8 test_utf8.cpp)
 target_link_libraries(wma_test_utf8 PRIVATE wma)
 add_test(NAME wma_test_utf8 COMMAND wma_test_utf8)
 
+add_executable(wma_test_process_frames test_process_frames.cpp)
+target_link_libraries(wma_test_process_frames PRIVATE wma)
+add_test(NAME wma_test_process_frames COMMAND wma_test_process_frames)
+
 add_executable(wma_test_resize_watch test_resize_watch.cpp)
 target_link_libraries(wma_test_resize_watch PRIVATE wma)
 if(WMA_ENABLE_SDL)

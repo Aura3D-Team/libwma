@@ -7,6 +7,7 @@ All notable changes to libwma are documented in this file.
 ### Added
 
 - `wma::ResizeWatch`: one reader's view of the window's resizes. The renderer, a UI and the app each keep one, and each sees every resize once.
+- `IWindowManager::processFrames()`: `process()` for a caller that does not draw every iteration. The callback returns whether it drew, and only those iterations call `swapBuffers()`. A swap after a skipped iteration would present an OpenGL back buffer nothing was drawn into.
 
 ### Changed
 

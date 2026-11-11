@@ -1,5 +1,5 @@
-// ResizeWatch: every reader sees every resize, whatever the other readers do. With SDL built, also that a real
-// backend counts one: SDL's dummy video driver needs no display.
+// ResizeWatch and ExposeWatch: every reader sees every event, whatever the other readers do. With SDL built, also that
+// a real backend counts one: SDL's dummy video driver needs no display.
 
 #include <cstdio>
 #include <cstdlib>
@@ -51,6 +51,12 @@ int main()
     wma::ResizeWatch fresh;
     check(fresh.consume(flags), "a default watch sees every resize already counted");
 
+    wma::ExposeWatch exposes{flags};
+    const wma::ResizeWatch sizes{flags};
+    flags.markExposed();
+    check(exposes.consume(flags) && !exposes.consume(flags), "an expose is reported once, like a resize");
+    check(!sizes.pending(flags), "and is no resize");
+
 #if defined(WMA_TEST_HAS_SDL)
     setenv("SDL_VIDEODRIVER", "dummy", 1);
     wma::WindowDetails details;
@@ -68,6 +74,14 @@ int main()
           "with the new size in the details");
     window->pollEvents();
     check(!sdl.consume(*window->getWindowFlags()), "and no resize where the size stayed");
+
+    wma::ExposeWatch exposed{*window->getWindowFlags()};
+    SDL_Event expose{};
+    expose.type = SDL_EVENT_WINDOW_EXPOSED;
+    expose.window.windowID = SDL_GetWindowID(static_cast<SDL_Window *>(window->getWindowInstance()));
+    SDL_PushEvent(&expose);
+    window->pollEvents();
+    check(exposed.consume(*window->getWindowFlags()), "SDL3 counts an expose");
 #endif
 
     return g_failures == 0 ? 0 : 1;

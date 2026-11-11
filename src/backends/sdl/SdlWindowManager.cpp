@@ -320,6 +320,7 @@ void SdlWindowManager::pollEvents()
         case SDL_EVENT_WINDOW_FOCUS_LOST:
         case SDL_EVENT_WINDOW_MINIMIZED:
         case SDL_EVENT_WINDOW_RESTORED:
+        case SDL_EVENT_WINDOW_EXPOSED:
             handleWindowEvent(&event);
             break;
         case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
@@ -654,6 +655,9 @@ void SdlWindowManager::handleWindowEvent(const SDL_Event *event)
         break;
     case SDL_EVENT_WINDOW_RESTORED:
         windowFlags_.minimized = false;
+        break;
+    case SDL_EVENT_WINDOW_EXPOSED:
+        windowFlags_.markExposed();
         break;
     default:
         break;

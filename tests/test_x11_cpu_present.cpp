@@ -151,6 +151,19 @@ int main()
         check(acquire(*window).valid(), "a slot is released once the server reports it");
         window->presentFramebuffer();
 
+        check(window->getWindowFlags()->exposeCount > 0, "the first expose is counted");
+        wma::ExposeWatch exposes{*window->getWindowFlags()};
+        XClearArea(display, id, 0, 0, 0, 0, True);
+        settle(*window);
+        check(exposes.consume(*window->getWindowFlags()), "an expose asks for a redraw");
+        XUnmapWindow(display, id);
+        settle(*window);
+        check(window->getWindowFlags()->minimized, "an unmapped (iconified) window is minimized");
+        XMapWindow(display, id);
+        settle(*window);
+        check(!window->getWindowFlags()->minimized && exposes.consume(*window->getWindowFlags()),
+              "mapped again it is not, and asks for a redraw");
+
         wma::ResizeWatch resizes{*window->getWindowFlags()};
         XResizeWindow(display, id, 400, 300);
         pumpUntilSize(*window, 400, 300);

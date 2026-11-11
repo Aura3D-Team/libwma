@@ -646,6 +646,17 @@ void X11WindowManager::pollEvents()
         switch (event.type)
         {
         case Expose:
+            //! The last of a series: one redraw covers every rectangle the server listed.
+            if (event.xexpose.count == 0)
+                windowFlags_.markExposed();
+            break;
+        case UnmapNotify:
+            //! An ICCCM window manager unmaps the windows it iconifies; nothing drawn into one is shown.
+            windowFlags_.minimized = true;
+            break;
+        case MapNotify:
+            //! The Expose that follows asks for the redraw.
+            windowFlags_.minimized = false;
             break;
         case KeyPress:
         case KeyRelease:

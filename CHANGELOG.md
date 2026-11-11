@@ -7,6 +7,7 @@ All notable changes to libwma are documented in this file.
 ### Added
 
 - `wma::ResizeWatch`: one reader's view of the window's resizes. The renderer, a UI and the app each keep one, and each sees every resize once.
+- `WindowFlags::exposeCount` and `wma::ExposeWatch`: the platform discarded what the window showed and wants it drawn again, for example after a restore from minimized or when an X11 window without a compositor is uncovered. X11 counts `Expose`, SDL3 counts `SDL_EVENT_WINDOW_EXPOSED`, and GLFW counts its refresh callback. Both watches are `wma::CounterWatch` over their counter.
 - `IWindowManager::processFrames()`: `process()` for a caller that does not draw every iteration. The callback returns whether it drew, and only those iterations call `swapBuffers()`. A swap after a skipped iteration would present an OpenGL back buffer nothing was drawn into.
 
 ### Changed
@@ -15,6 +16,7 @@ All notable changes to libwma are documented in this file.
 
 ### Fixed
 
+- X11 never reported a minimized window, so a renderer kept drawing into an iconified one. An unmapped window is now `minimized`, and mapping it again clears that.
 - SDL3: a change of pixel density alone (the window moved to a display with another scale) changed `getFramebufferSize()` without counting a resize. `SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED` now counts one.
 
 ## [0.10.0]

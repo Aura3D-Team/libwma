@@ -168,6 +168,7 @@ void GlfwWindowManager::createWindow(const char *windowName)
     glfwSetWindowContentScaleCallback(window_, contentScaleCallback);
     glfwSetWindowFocusCallback(window_, windowFocusCallback);
     glfwSetWindowIconifyCallback(window_, windowIconifyCallback);
+    glfwSetWindowRefreshCallback(window_, windowRefreshCallback);
     //! GLFW's X11 attribute query is a server round trip; the callback is not.
     glfwSetWindowMaximizeCallback(window_, windowMaximizeCallback);
     maximized_ = glfwGetWindowAttrib(window_, GLFW_MAXIMIZED) == GLFW_TRUE;
@@ -539,6 +540,12 @@ void GlfwWindowManager::windowIconifyCallback(GLFWwindow *window, int iconified)
     auto *instance = getInstanceFromWindow(window);
     if (instance)
         instance->windowFlags_.minimized = (iconified == GLFW_TRUE);
+}
+
+void GlfwWindowManager::windowRefreshCallback(GLFWwindow *window)
+{
+    if (auto *instance = getInstanceFromWindow(window))
+        instance->windowFlags_.markExposed();
 }
 
 void GlfwWindowManager::windowMaximizeCallback(GLFWwindow *window, int maximized)

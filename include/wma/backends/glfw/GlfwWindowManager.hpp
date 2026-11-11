@@ -103,6 +103,7 @@ class GlfwWindowManager : public IWindowManager
     static void framebufferSizeCallback(GLFWwindow *window, int width, int height);
     static void windowFocusCallback(GLFWwindow *window, int focused);
     static void windowIconifyCallback(GLFWwindow *window, int iconified);
+    static void windowRefreshCallback(GLFWwindow *window);
     static void windowMaximizeCallback(GLFWwindow *window, int maximized);
     static void contentScaleCallback(GLFWwindow *window, float xscale, float yscale);
     void initializeGLFW();

@@ -32,16 +32,22 @@ time, see [portability.md](portability.md).
 ## Frame loop
 
 ```cpp
-window->process([&] {
-    auto* flags = window->getWindowFlags();   // deltaTime, fps, resized, focused, minimized
+wma::ResizeWatch resizes;                     // this reader's own view of the resize count
 
-    if (flags->resized) {
+window->process([&] {
+    auto* flags = window->getWindowFlags();   // deltaTime, fps, resizeCount, focused, minimized
+
+    if (resizes.consume(*flags)) {
         const auto* d = window->getWindowDetails();
         resize(d->width, d->height);
-        flags->resized = false;               // you clear it
     }
 });
 ```
+
+`WindowFlags::resizeCount` only grows: a resize, maximize, restore, fullscreen
+toggle, decoration drag or change of pixel density each adds one. Every reader
+(renderer, UI, app) keeps its own `ResizeWatch`, so none can hide a resize from
+another. A burst between two checks reads as one.
 
 `process()` runs until `shouldClose()`. Call `window->close()` to request exit;
 destroy the native window after releasing its rendering resources.

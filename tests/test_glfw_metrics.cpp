@@ -77,6 +77,7 @@ int main()
     check(window->getContentScale() == scale, "and the same one until GLFW says it changed");
 
     // A resize reaches the kept size.
+    wma::ResizeWatch resizes{*window->getWindowFlags()};
     glfwSetWindowSize(handle, 400, 300);
     for (int i = 0; i < 50 && window->getFramebufferSize().width == size.width; ++i)
         window->waitEvents(10);
@@ -84,6 +85,7 @@ int main()
     size = window->getFramebufferSize();
     check(size.width == width && size.height == height, "after a resize it is the new size");
     check(size.width != 320, "which is not the old one");
+    check(resizes.consume(*window->getWindowFlags()), "and the resize is counted");
 
     const f32 resized = window->getContentScale();
     check(std::isfinite(resized) && resized > 0.0f, "and the content scale is still a positive number");

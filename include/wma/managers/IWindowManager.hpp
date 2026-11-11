@@ -208,7 +208,7 @@ class IWindowManager
      * result to `CAMetalLayer*` (or metal-cpp's `CA::MetalLayer*`, which is
      * the same object) and set its device and pixel format; the layer's size
      * is kept in step with the window by the backend, so a renderer only has
-     * to react to WindowFlags::resized.
+     * to react to WindowFlags::resizeCount.
      *
      * Returned as void* deliberately. A CAMetalLayer* in this signature would
      * drag QuartzCore — and therefore Objective-C — into every consumer's

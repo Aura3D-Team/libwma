@@ -151,8 +151,10 @@ int main()
         check(acquire(*window).valid(), "a slot is released once the server reports it");
         window->presentFramebuffer();
 
+        wma::ResizeWatch resizes{*window->getWindowFlags()};
         XResizeWindow(display, id, 400, 300);
         pumpUntilSize(*window, 400, 300);
+        check(resizes.consume(*window->getWindowFlags()), "a resize is counted");
         const wma::SoftwareFramebuffer resized = acquire(*window);
         check(resized.valid() && resized.width == 400 && resized.height == 300, "the framebuffer follows a resize");
         if (resized.valid())

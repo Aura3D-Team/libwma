@@ -762,7 +762,7 @@ void X11WindowManager::handleWindowEvent(const XEvent *event)
         {
             windowDetails_.width = xce.width;
             windowDetails_.height = xce.height;
-            windowFlags_.resized = true;
+            windowFlags_.markResized();
         }
     }
     else if (randrEventBase_ >= 0 && event->type == randrEventBase_ + RRScreenChangeNotify)

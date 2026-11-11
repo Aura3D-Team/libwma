@@ -2,6 +2,20 @@
 
 All notable changes to libwma are documented in this file.
 
+## [0.11.0]
+
+### Added
+
+- `wma::ResizeWatch`: one reader's view of the window's resizes. The renderer, a UI and the app each keep one, and each sees every resize once.
+
+### Changed
+
+- **`WindowFlags::resized` is replaced by `WindowFlags::resizeCount`**, which only grows. The flag was cleared by whoever read it first, which was always the renderer, so an app never saw a resize. Read the count through a `ResizeWatch`; backends and custom Wayland surface roles raise it with `markResized()`.
+
+### Fixed
+
+- SDL3: a change of pixel density alone (the window moved to a display with another scale) changed `getFramebufferSize()` without counting a resize. `SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED` now counts one.
+
 ## [0.10.0]
 
 ### Added

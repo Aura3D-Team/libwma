@@ -8,10 +8,10 @@ All notable changes to libwma are documented in this file.
 
 - `wma::ResizeWatch`: one reader's view of the window's resizes. The renderer, a UI and the app each keep one, and each sees every resize once.
 - `WindowFlags::exposeCount` and `wma::ExposeWatch`: the platform discarded what the window showed and wants it drawn again, for example after a restore from minimized or when an X11 window without a compositor is uncovered. X11 counts `Expose`, SDL3 counts `SDL_EVENT_WINDOW_EXPOSED`, and GLFW counts its refresh callback. Both watches are `wma::CounterWatch` over their counter.
-- `IWindowManager::processFrames()`: `process()` for a caller that does not draw every iteration. The callback returns whether it drew, and only those iterations call `swapBuffers()`. A swap after a skipped iteration would present an OpenGL back buffer nothing was drawn into.
 
 ### Changed
 
+- **`process()` no longer calls `swapBuffers()`.** Only the callback knows whether it drew: a swap after an iteration that drew nothing presents an undrawn OpenGL back buffer, so a loop that skips idle frames could not use `process()`. Call `swapBuffers()` from the callback after a frame that drew, as a loop of your own does. An OpenGL or vsynced CPU window that relied on `process()` to swap must now do it itself.
 - **`WindowFlags::resized` is replaced by `WindowFlags::resizeCount`**, which only grows. The flag was cleared by whoever read it first, which was always the renderer, so an app never saw a resize. Read the count through a `ResizeWatch`; backends and custom Wayland surface roles raise it with `markResized()`.
 
 ### Fixed

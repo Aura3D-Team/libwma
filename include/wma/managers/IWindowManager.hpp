@@ -28,10 +28,11 @@ namespace wma
  *   - process(): a managed blocking run-loop. On Emscripten/WASM it hands the
  *     loop to the browser (via emscripten_set_main_loop) and returns
  *     immediately, because a blocking while-loop cannot run there.
- *     processFrames() is the same loop for a caller that does not draw on
- *     every iteration.
- *   - Manual stepping: call pollEvents(), render, then swapBuffers() yourself.
+ *   - Manual stepping: call pollEvents() and render yourself.
  *     Works identically on every platform.
+ *
+ * Either way presenting is the caller's: call swapBuffers() after a frame
+ * that drew, and not after one that did not.
  */
 class IWindowManager
 {
@@ -103,25 +104,22 @@ class IWindowManager
     }
 
     /**
-     * @brief Run the managed main loop, invoking @p actions once per frame.
+     * @brief Run the managed main loop, invoking @p actions once per iteration.
+     *
+     * Each iteration polls events, calls @p actions and holds the loop to the
+     * configured frame rate. It does not present: only @p actions knows whether
+     * it drew, and a swap after an iteration that drew nothing would present an
+     * OpenGL back buffer nothing was drawn into. Call swapBuffers() from
+     * @p actions after a frame that drew. An iteration that draws nothing keeps
+     * the window showing its last frame, and should wait for input
+     * (waitEvents()) or the loop spins.
      *
      * Desktop: blocks until the window closes. WASM: registers the browser
      * animation-frame loop and returns immediately (the callable and window
      * must outlive the loop). Implemented in terms of pollEvents()/
-     * swapBuffers()/shouldClose(), so backends do not reimplement it.
+     * shouldClose(), so backends do not reimplement it.
      */
     void process(std::function<void()> &&actions);
-
-    /**
-     * @brief process() for a caller that does not draw on every iteration.
-     *
-     * @p frame returns whether it drew. An iteration that did not skips
-     * swapBuffers(): an OpenGL swap would present a back buffer nothing was
-     * drawn into, and a CPU window would wait for a present that never came.
-     * The window keeps showing the last frame. Waiting while idle is up to
-     * @p frame (waitEvents()), or the loop spins.
-     */
-    void processFrames(std::function<bool()> &&frame);
 
     //! Pump the OS event queue once (non-blocking). Safe to call every frame.
     virtual void pollEvents() = 0;
@@ -146,7 +144,8 @@ class IWindowManager
 
     //! Present the current frame: GL buffer swap, software blit, or no-op for
     //! Vulkan and Metal (which the application presents through its own
-    //! swapchain / the CAMetalLayer's drawables).
+    //! swapchain / the CAMetalLayer's drawables). Called by whoever drew the
+    //! frame, never by process(), and not for an iteration that drew nothing.
     virtual void swapBuffers()
     {
     }

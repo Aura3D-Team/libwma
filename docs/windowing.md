@@ -49,6 +49,11 @@ toggle, decoration drag or change of pixel density each adds one. Every reader
 (renderer, UI, app) keeps its own `ResizeWatch`, so none can hide a resize from
 another. A burst between two checks reads as one.
 
+`process()` polls events, calls your callback and holds the loop to the frame rate. It does not present: call
+`swapBuffers()` yourself after a frame that drew (after `presentFramebuffer()` on a CPU window, or the GL buffer swap),
+and not after an iteration that drew nothing. Only your callback knows which it was, and an OpenGL swap of an undrawn
+back buffer shows garbage. An idle iteration should `waitEvents()` instead of spinning.
+
 `process()` runs until `shouldClose()`. Call `window->close()` to request exit;
 destroy the native window after releasing its rendering resources.
 
@@ -213,14 +218,14 @@ never `width * 4`.
 With `WindowDetails::vsync` and `targetFPS = 0`, `presentWaitsForDisplay()` says whether the loop is held to the refresh
 by blocking:
 
-| Backend | Present | `process()` |
+| Backend | Present (`swapBuffers()`) | `process()` |
 |---|---|---|
 | Wayland | `swapBuffers()` waits for the frame callback | no cap |
 | X11 + X Present | `swapBuffers()` waits for the vblank-synchronised copy; no tearing | no cap |
 | SDL3 | vsynced window surface, if the driver accepts it | no cap |
 | X11 server without Present or MIT-SHM pixmaps, SDL3 without surface vsync | does not wait; can tear | caps at `displayRefreshHz()` (60 where unknown) |
 
-Set `targetFPS` for another rate. A loop of your own that calls `swapBuffers()` is paced the same way. On Wayland and X11
+Set `targetFPS` for another rate. A loop that calls `swapBuffers()` after each presented frame is paced the same way, whether it runs in `process()` or not. On Wayland and X11
 a stalled output waits at most 100 ms, and a frame that presented nothing blocks one refresh (16 ms) or until input.
 X11 reads `vsync` when the window is created.
 

@@ -352,6 +352,7 @@ int main(int argc, char **argv)
                         }
                     }
                     windowManager->presentFramebuffer();
+                    windowManager->swapBuffers(); // paces the loop to the display on a vsynced window
                 }
             });
 

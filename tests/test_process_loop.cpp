@@ -1,5 +1,5 @@
-// processFrames(): the managed loop for a caller that does not draw every iteration. Only iterations that drew
-// may swap, or an OpenGL window would present a back buffer nothing was drawn into.
+// process(): polls, calls the callback once per iteration, and never presents. Only the callback knows whether it
+// drew, and a swap after an iteration that drew nothing would present an OpenGL back buffer nothing was drawn into.
 
 #include <cstdio>
 #include <vector>
@@ -109,24 +109,24 @@ int main()
     {
         ScriptedWindow window{6};
         int calls = 0;
-        window.processFrames(
+        window.process(
             [&calls, &window]
             {
                 ++calls;
-                return window.polls % 3 == 1; // Draws on the 1st and 4th iterations only.
+                if (window.polls % 3 == 1) // Draws on the 1st and 4th iterations only.
+                    window.swapBuffers();
             });
-        check(calls == 6 && window.polls == 6, "processFrames() polls and calls the frame once per iteration");
-        check((window.swappedAfterPoll == std::vector<int>{1, 4}), "and swaps only after the iterations that drew");
+        check(calls == 6 && window.polls == 6, "process() polls and calls the callback once per iteration");
+        check((window.swappedAfterPoll == std::vector<int>{1, 4}),
+              "and presents only where the callback did: the loop adds no swap of its own");
     }
     {
         ScriptedWindow window{4};
-        int calls = 0;
         window.process(
-            [&calls]
+            []
             {
-                ++calls;
             });
-        check(calls == 4 && window.swaps == 4, "process() still swaps after every iteration");
+        check(window.swaps == 0, "an idle callback leaves the window showing its last frame");
     }
     return g_failures == 0 ? 0 : 1;
 }

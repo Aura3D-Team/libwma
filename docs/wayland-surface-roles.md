@@ -7,7 +7,7 @@ Include `<wma/WaylandSurfaceRole.hpp>` and pass an owned `WaylandSurfaceRole` to
 | libwma | connection, uncommitted wl_surface, seat input, event dispatch, native rendering handles |
 | role | protocol objects, configure acknowledgement, logical dimensions, scale, close state |
 
-The manager calls `attach()` before the first commit, waits for `configured()`, and destroys the role before the wl_surface and display. `rebind()` updates borrowed details/flags pointers after a manager move. Mark `WindowFlags::resized` when dimensions or buffer scale change. Current custom-role rendering supports Vulkan; other graphics APIs fail explicitly.
+The manager calls `attach()` before the first commit, waits for `configured()`, and destroys the role before the wl_surface and display. `rebind()` updates borrowed details/flags pointers after a manager move. Call `WindowFlags::markResized()` when dimensions or buffer scale change. Current custom-role rendering supports Vulkan; other graphics APIs fail explicitly.
 
 Aura3D accepts an application window factory through `Engine(config, configPath, factory)`. This keeps layer-shell protocols and policy in a consumer such as libaurashell.
 

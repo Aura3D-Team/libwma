@@ -5,6 +5,18 @@ add_executable(wma_test_utf8 test_utf8.cpp)
 target_link_libraries(wma_test_utf8 PRIVATE wma)
 add_test(NAME wma_test_utf8 COMMAND wma_test_utf8)
 
+add_executable(wma_test_process_frames test_process_frames.cpp)
+target_link_libraries(wma_test_process_frames PRIVATE wma)
+add_test(NAME wma_test_process_frames COMMAND wma_test_process_frames)
+
+add_executable(wma_test_resize_watch test_resize_watch.cpp)
+target_link_libraries(wma_test_resize_watch PRIVATE wma)
+if(WMA_ENABLE_SDL)
+    target_link_libraries(wma_test_resize_watch PRIVATE SDL3::SDL3)
+    target_compile_definitions(wma_test_resize_watch PRIVATE WMA_TEST_HAS_SDL)
+endif()
+add_test(NAME wma_test_resize_watch COMMAND wma_test_resize_watch)
+
 # SDL's dummy video driver stands in for a display, so this runs headless.
 add_executable(wma_test_content_scale test_content_scale.cpp)
 target_link_libraries(wma_test_content_scale PRIVATE wma)

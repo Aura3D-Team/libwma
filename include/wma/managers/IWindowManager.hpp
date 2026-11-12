@@ -28,6 +28,8 @@ namespace wma
  *   - process(): a managed blocking run-loop. On Emscripten/WASM it hands the
  *     loop to the browser (via emscripten_set_main_loop) and returns
  *     immediately, because a blocking while-loop cannot run there.
+ *     processFrames() is the same loop for a caller that does not draw on
+ *     every iteration.
  *   - Manual stepping: call pollEvents(), render, then swapBuffers() yourself.
  *     Works identically on every platform.
  */
@@ -109,6 +111,17 @@ class IWindowManager
      * swapBuffers()/shouldClose(), so backends do not reimplement it.
      */
     void process(std::function<void()> &&actions);
+
+    /**
+     * @brief process() for a caller that does not draw on every iteration.
+     *
+     * @p frame returns whether it drew. An iteration that did not skips
+     * swapBuffers(): an OpenGL swap would present a back buffer nothing was
+     * drawn into, and a CPU window would wait for a present that never came.
+     * The window keeps showing the last frame. Waiting while idle is up to
+     * @p frame (waitEvents()), or the loop spins.
+     */
+    void processFrames(std::function<bool()> &&frame);
 
     //! Pump the OS event queue once (non-blocking). Safe to call every frame.
     virtual void pollEvents() = 0;
@@ -208,7 +221,7 @@ class IWindowManager
      * result to `CAMetalLayer*` (or metal-cpp's `CA::MetalLayer*`, which is
      * the same object) and set its device and pixel format; the layer's size
      * is kept in step with the window by the backend, so a renderer only has
-     * to react to WindowFlags::resized.
+     * to react to WindowFlags::resizeCount.
      *
      * Returned as void* deliberately. A CAMetalLayer* in this signature would
      * drag QuartzCore — and therefore Objective-C — into every consumer's

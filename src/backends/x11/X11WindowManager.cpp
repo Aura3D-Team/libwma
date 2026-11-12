@@ -646,6 +646,16 @@ void X11WindowManager::pollEvents()
         switch (event.type)
         {
         case Expose:
+            //! The last of a series: one redraw covers every rectangle the server listed.
+            if (event.xexpose.count == 0)
+                windowFlags_.markExposed();
+            break;
+        case UnmapNotify:
+            windowFlags_.minimized = true;
+            break;
+        case MapNotify:
+            //! The Expose that follows asks for the redraw.
+            windowFlags_.minimized = false;
             break;
         case KeyPress:
         case KeyRelease:
@@ -762,7 +772,7 @@ void X11WindowManager::handleWindowEvent(const XEvent *event)
         {
             windowDetails_.width = xce.width;
             windowDetails_.height = xce.height;
-            windowFlags_.resized = true;
+            windowFlags_.markResized();
         }
     }
     else if (randrEventBase_ >= 0 && event->type == randrEventBase_ + RRScreenChangeNotify)

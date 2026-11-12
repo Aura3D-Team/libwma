@@ -76,7 +76,9 @@ int main()
     check(std::isfinite(scale) && scale > 0.0f, "the content scale is a positive number");
     check(window->getContentScale() == scale, "and the same one until GLFW says it changed");
 
-    // A resize reaches the kept size.
+    // A resize reaches the kept size. Growing the window exposes it, which GLFW reports as a refresh.
+    wma::ResizeWatch resizes{*window->getWindowFlags()};
+    wma::ExposeWatch exposes{*window->getWindowFlags()};
     glfwSetWindowSize(handle, 400, 300);
     for (int i = 0; i < 50 && window->getFramebufferSize().width == size.width; ++i)
         window->waitEvents(10);
@@ -84,6 +86,10 @@ int main()
     size = window->getFramebufferSize();
     check(size.width == width && size.height == height, "after a resize it is the new size");
     check(size.width != 320, "which is not the old one");
+    check(resizes.consume(*window->getWindowFlags()), "and the resize is counted");
+    for (int i = 0; i < 20 && !exposes.pending(*window->getWindowFlags()); ++i)
+        window->waitEvents(10);
+    check(exposes.consume(*window->getWindowFlags()), "and the refresh it asks for is counted as an expose");
 
     const f32 resized = window->getContentScale();
     check(std::isfinite(resized) && resized > 0.0f, "and the content scale is still a positive number");

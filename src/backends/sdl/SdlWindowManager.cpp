@@ -315,10 +315,12 @@ void SdlWindowManager::pollEvents()
                 close();
             break;
         case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
         case SDL_EVENT_WINDOW_FOCUS_LOST:
         case SDL_EVENT_WINDOW_MINIMIZED:
         case SDL_EVENT_WINDOW_RESTORED:
+        case SDL_EVENT_WINDOW_EXPOSED:
             handleWindowEvent(&event);
             break;
         case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
@@ -364,7 +366,7 @@ void SdlWindowManager::syncSize() noexcept
         return;
     windowDetails_.width = width;
     windowDetails_.height = height;
-    windowFlags_.resized = true;
+    windowFlags_.markResized();
 }
 
 void SdlWindowManager::swapBuffers()
@@ -631,7 +633,12 @@ void SdlWindowManager::handleWindowEvent(const SDL_Event *event)
     case SDL_EVENT_WINDOW_RESIZED:
         windowDetails_.width = event->window.data1;
         windowDetails_.height = event->window.data2;
-        windowFlags_.resized = true;
+        windowFlags_.markResized();
+        break;
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        //! The logical size stays when only the pixel density changes (the window moved to a display with another
+        //! scale), so no RESIZED comes; getFramebufferSize() has changed all the same.
+        windowFlags_.markResized();
         break;
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
         windowFlags_.focused = true;
@@ -648,6 +655,9 @@ void SdlWindowManager::handleWindowEvent(const SDL_Event *event)
         break;
     case SDL_EVENT_WINDOW_RESTORED:
         windowFlags_.minimized = false;
+        break;
+    case SDL_EVENT_WINDOW_EXPOSED:
+        windowFlags_.markExposed();
         break;
     default:
         break;

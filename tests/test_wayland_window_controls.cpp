@@ -748,6 +748,7 @@ void testControlsAndConfigure()
     check(requests.title == "Aura3D \xc3\xa9" && requests.minimizes == 1 && requests.maximizes == 1,
           "title, minimize, and maximize reach xdg_toplevel");
     check(!window->isMaximized(), "maximize request does not optimistically change compositor state");
+    wma::ResizeWatch resizes{*window->getWindowFlags()};
     server.configure(true, 0, 0, false);
     sync(*window);
     check(!window->isMaximized(), "toplevel state waits for the matching surface configure");
@@ -756,6 +757,7 @@ void testControlsAndConfigure()
     check(window->isMaximized() && window->getWindowDetails()->width == 800 &&
               window->getWindowDetails()->height == 600,
           "zero-size configure updates state and preserves dimensions");
+    check(!resizes.consume(*window->getWindowFlags()), "a configure that keeps the size is not a resize");
     check(window->restore(), "restore queues unset_maximized");
     sync(*window);
     check(server.requests().restores == 1 && window->isMaximized(), "restore state also waits for configure");
@@ -764,13 +766,16 @@ void testControlsAndConfigure()
     check(!window->isMaximized() && window->getWindowDetails()->width == 1024 &&
               window->getWindowDetails()->height == 768,
           "restored configure updates size and state");
+    check(resizes.consume(*window->getWindowFlags()), "a restore to another size is a resize");
     server.configure(true, 1920, 1080);
     sync(*window);
+    check(resizes.consume(*window->getWindowFlags()), "a maximize is a resize");
     server.configure(false);
     sync(*window);
     check(!window->isMaximized() && window->getWindowDetails()->width == 1024 &&
               window->getWindowDetails()->height == 768,
           "zero-size restore returns to the last floating size");
+    check(resizes.consume(*window->getWindowFlags()), "returning to the floating size is a resize");
     server.closeWindow();
     sync(*window);
     check(window->shouldClose(), "compositor close sets the existing shouldClose flag");

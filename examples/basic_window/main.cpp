@@ -304,6 +304,7 @@ int main(int argc, char **argv)
         // Main loop
         unsigned long long frameCount = 0;
         f64 fpsLogTimer = 0.0;
+        wma::ResizeWatch resizes;
 
         windowManager->process(
             [&]()
@@ -313,11 +314,10 @@ int main(int argc, char **argv)
                 auto *flags = windowManager->getWindowFlags();
                 fpsLogTimer += flags->deltaTime;
 
-                if (flags->resized)
+                if (resizes.consume(*flags))
                 {
                     const auto *details = windowManager->getWindowDetails();
                     INK_LOG << "Window resized to " << details->width << "x" << details->height;
-                    flags->resized = false;
                 }
 
                 // windowFlags_ exposes deltaTime/fps every frame; log once/second

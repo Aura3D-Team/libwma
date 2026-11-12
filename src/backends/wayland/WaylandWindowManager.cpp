@@ -1120,7 +1120,7 @@ void WaylandWindowManager::handleXdgSurfaceConfigure(void *data, xdg_surface *xd
     {
         manager->windowDetails_.width = width;
         manager->windowDetails_.height = height;
-        manager->windowFlags_.resized = true;
+        manager->windowFlags_.markResized();
 
         if (manager->graphicsAPI_ == GraphicsAPI::CPU)
             manager->allocateShmBuffer(width, height);

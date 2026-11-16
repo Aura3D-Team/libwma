@@ -35,7 +35,7 @@ time, see [portability.md](portability.md).
 wma::ResizeWatch resizes;                     // this reader's own view of the resize count
 
 window->process([&] {
-    auto* flags = window->getWindowFlags();   // deltaTime, fps, resizeCount, focused, minimized
+    auto* flags = window->getWindowFlags();   // deltaTime, fps, resizeCount, state (isFocused/isMinimized/isOccluded)
 
     if (resizes.consume(*flags)) {
         const auto* d = window->getWindowDetails();
@@ -49,10 +49,17 @@ toggle, decoration drag or change of pixel density each adds one. Every reader
 (renderer, UI, app) keeps its own `ResizeWatch`, so none can hide a resize from
 another. A burst between two checks reads as one.
 
-`process()` polls events, calls your callback and holds the loop to the frame rate. It does not present: call
-`swapBuffers()` yourself after a frame that drew (after `presentFramebuffer()` on a CPU window, or the GL buffer swap),
-and not after an iteration that drew nothing. Only your callback knows which it was, and an OpenGL swap of an undrawn
-back buffer shows garbage. An idle iteration should `waitEvents()` instead of spinning.
+`process()` polls events, calls your callback and holds the loop to the frame rate. It does not call `swapBuffers()`.
+The callback does:
+
+| API | `swapBuffers()` |
+|---|---|
+| OpenGL | the buffer swap: only after a frame that drew, or an undrawn back buffer is shown |
+| CPU | nothing: `presentFramebuffer()` presents, and pacing is `readyToPresent()` |
+| Vulkan | no-op; after each `vkQueuePresentKHR` the driver took, call `framePresented()` with whether it waits for the display (Fifo) |
+| Metal | no-op; call `framePresented()` after each present |
+
+An iteration that presents nothing, because nothing changed or `readyToPresent()` is false, should `waitEvents()` instead of spinning.
 
 `process()` runs until `shouldClose()`. Call `window->close()` to request exit;
 destroy the native window after releasing its rendering resources.
@@ -220,13 +227,12 @@ by blocking:
 
 | Backend | Present (`swapBuffers()`) | `process()` |
 |---|---|---|
-| Wayland | `swapBuffers()` waits for the frame callback | no cap |
-| X11 + X Present | `swapBuffers()` waits for the vblank-synchronised copy; no tearing | no cap |
+| Wayland | `readyToPresent()` is false until the frame callback | no cap |
+| X11 + X Present | `readyToPresent()` is false until the vblank-synchronised copy completes; no tearing | no cap |
 | SDL3 | vsynced window surface, if the driver accepts it | no cap |
 | X11 server without Present or MIT-SHM pixmaps, SDL3 without surface vsync | does not wait; can tear | caps at `displayRefreshHz()` (60 where unknown) |
 
-Set `targetFPS` for another rate. A loop that calls `swapBuffers()` after each presented frame is paced the same way, whether it runs in `process()` or not. On Wayland and X11
-a stalled output waits at most 100 ms, and a frame that presented nothing blocks one refresh (16 ms) or until input.
+Set `targetFPS` for another rate. A software loop is paced by `readyToPresent()` instead of a wait: a frame is drawn only once the platform has shown the last one, and the loop sleeps in `waitEvents()` until it has, whether it runs in `process()` or not. A stalled or hidden output therefore stops the loop at no cost, rather than ticking.
 X11 reads `vsync` when the window is created.
 
 ## Errors

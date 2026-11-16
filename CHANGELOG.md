@@ -6,18 +6,25 @@ All notable changes to libwma are documented in this file.
 
 ### Added
 
-- `wma::ResizeWatch`: one reader's view of the window's resizes. The renderer, a UI and the app each keep one, and each sees every resize once.
-- `WindowFlags::exposeCount` and `wma::ExposeWatch`: the platform discarded what the window showed and wants it drawn again, for example after a restore from minimized or when an X11 window without a compositor is uncovered. X11 counts `Expose`, SDL3 counts `SDL_EVENT_WINDOW_EXPOSED`, and GLFW counts its refresh callback. Both watches are `wma::CounterWatch` over their counter.
+- `wma::ResizeWatch` and `wma::ExposeWatch`: each reader sees every resize or expose once.
+- `WindowState::Occluded`, read with `WindowFlags::isOccluded()`: nothing of the window is on screen though it is not minimized. Set from Wayland's suspended state, SDL3's occlusion events and X11's `_NET_WM_STATE_HIDDEN`.
+- `IWindowManager::readyToPresent()`: false while the last presented frame is not yet shown, or no buffer is free (on Wayland: vsynced OpenGL and Vulkan; software on Wayland and X11). A renderer draws nothing until it is true, and `waitEvents()` returns when it becomes so.
+- `IWindowManager::framePresented(PresentPacing)`: a Vulkan or Metal renderer calls it after each present, saying whether that present waits for the display. Wayland paces on the mode the swapchain really has.
 
 ### Changed
 
-- **`process()` no longer calls `swapBuffers()`.** Only the callback knows whether it drew: a swap after an iteration that drew nothing presents an undrawn OpenGL back buffer, so a loop that skips idle frames could not use `process()`. Call `swapBuffers()` from the callback after a frame that drew, as a loop of your own does. An OpenGL or vsynced CPU window that relied on `process()` to swap must now do it itself.
-- **`WindowFlags::resized` is replaced by `WindowFlags::resizeCount`**, which only grows. The flag was cleared by whoever read it first, which was always the renderer, so an app never saw a resize. Read the count through a `ResizeWatch`; backends and custom Wayland surface roles raise it with `markResized()`.
+- `process()` no longer calls `swapBuffers()`. The callback calls it, after a frame that drew.
+- `swapBuffers()` is OpenGL's swap only, and never blocks. Pacing is `readyToPresent()`, and `basic_window` waits on it.
+- **`WindowFlags::minimized` and `focused` are replaced by `WindowFlags::state`**, a `WindowState` bit set (`Minimized`, `Occluded`, `Focused`). Read it with `isMinimized()`, `isOccluded()` and `isFocused()`.
+- `WindowFlags::resized` is replaced by `resizeCount`, which only grows. Read it through a `ResizeWatch`; backends raise it with `markResized()`.
 
 ### Fixed
 
-- X11 never reported a minimized window, so a renderer kept drawing into an iconified one. An unmapped window is now `minimized`, and mapping it again clears that.
-- SDL3: a change of pixel density alone (the window moved to a display with another scale) changed `getFramebufferSize()` without counting a resize. `SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED` now counts one.
+- A hidden window no longer freezes a Wayland renderer whose present waits for the display. OpenGL now swaps with interval 0, and nothing is presented while a frame is still on its way. The headless test compositor covers it, as the Xvfb test covers X11's `readyToPresent()` and `_NET_WM_STATE_HIDDEN`.
+- X11: an iconified window under XWayland was never reported, so Vulkan crawled at one frame a second.
+- X11 never reported a minimized window. An unmapped window is now `minimized`.
+- SDL3: a pixel-density change alone now counts as a resize.
+- Android: the surface at creation is the `surfaceLost` baseline, so a renderer no longer rebuilds it at once.
 
 ## [0.10.0]
 

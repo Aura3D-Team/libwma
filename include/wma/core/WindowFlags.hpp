@@ -8,6 +8,24 @@
 namespace wma
 {
 
+//! The window's state as the platform reports it: one bit each in WindowFlags::state.
+enum class WindowState : u8
+{
+    Nothing = 0,
+    //! Iconified or minimized by the user or the window manager.
+    Minimized = 1u << 0,
+    //! Nothing of the window is on screen though it is not minimized: another workspace, fully covered, or the
+    //! screen is off. A renderer skips its frames as for a minimized one. Set only where the platform says so (a
+    //! Wayland compositor's suspended state, SDL's occlusion events, X11's _NET_WM_STATE_HIDDEN); never set
+    //! elsewhere. A window that is merely waiting for a frame to be shown is not this: see
+    //! IWindowManager::readyToPresent().
+    Occluded = 1u << 1,
+    //! The window has keyboard focus. A new window has it until the platform says otherwise.
+    Focused = 1u << 2,
+};
+
+INK_ENUM_FLAGS(WindowState)
+
 /**
  * @brief Runtime flags and state information for the window
  */
@@ -21,8 +39,10 @@ struct WindowFlags
     //! reset: a window restored from minimized, or uncovered where nothing kept its pixels (X11 without a
     //! compositor)
     u64 exposeCount;
-    bool minimized;
-    bool focused;
+    //! Minimized, occluded and focused, as WindowState bits; read them with isMinimized(), isOccluded() and
+    //! isFocused(). Only the event thread writes them, which is why they share a byte while the sticky flags below,
+    //! which a poller clears, stay separate.
+    WindowState state;
     f64 deltaTime;
     f64 fps;
 
@@ -41,9 +61,30 @@ struct WindowFlags
     bool textInputDismissed;
 
     WindowFlags()
-        : resizeCount(0), exposeCount(0), minimized(false), focused(true), deltaTime(0), fps(0.0), surfaceLost(false),
-          textInputDismissed(false)
+        : resizeCount(0), exposeCount(0), state(WindowState::Focused), deltaTime(0), fps(0.0),
+          surfaceLost(false), textInputDismissed(false)
     {
+    }
+
+    [[nodiscard]] bool isMinimized() const noexcept
+    {
+        return INK_FLAG_CHECK(state, WindowState::Minimized);
+    }
+    [[nodiscard]] bool isOccluded() const noexcept
+    {
+        return INK_FLAG_CHECK(state, WindowState::Occluded);
+    }
+    [[nodiscard]] bool isFocused() const noexcept
+    {
+        return INK_FLAG_CHECK(state, WindowState::Focused);
+    }
+    //! Backends call this to raise or drop @p flag.
+    void setState(WindowState flag, bool on) noexcept
+    {
+        if (on)
+            INK_FLAG_SET(state, flag);
+        else
+            INK_FLAG_CLEAR(state, flag);
     }
 
     //! Backends call this whenever the window's size or its size in pixels changes.
@@ -72,8 +113,7 @@ struct WindowFlags
  * });
  * @endcode
  */
-template <u64 WindowFlags::*Counter> 
-class CounterWatch
+template <u64 WindowFlags::*Counter> class CounterWatch
 {
   public:
     //! Starts behind every event already counted: the first consume() after one returns true.

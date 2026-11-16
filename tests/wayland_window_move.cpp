@@ -1,7 +1,15 @@
 #include "wma/backends/wayland/WaylandWindowManager.hpp"
 
+#include <wayland-client.h>
+
 #include <memory>
 #include <utility>
+
+void commitWaylandSurface(wma::IWindowManager &window)
+{
+    wl_surface_commit(static_cast<wl_surface *>(window.getWindowInstance()));
+    wl_display_flush(static_cast<wl_display *>(window.getNativeDisplayHandle()));
+}
 
 std::unique_ptr<wma::IWindowManager> moveWaylandWindow(std::unique_ptr<wma::IWindowManager> window, bool assign)
 {

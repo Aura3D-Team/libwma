@@ -31,8 +31,7 @@ namespace wma
  *   - Manual stepping: call pollEvents() and render yourself.
  *     Works identically on every platform.
  *
- * Either way presenting is the caller's: call swapBuffers() after a frame
- * that drew, and not after one that did not.
+ * Either way presenting is the caller's: see swapBuffers().
  */
 class IWindowManager
 {
@@ -110,9 +109,9 @@ class IWindowManager
      * configured frame rate. It does not present: only @p actions knows whether
      * it drew, and a swap after an iteration that drew nothing would present an
      * OpenGL back buffer nothing was drawn into. Call swapBuffers() from
-     * @p actions after a frame that drew. An iteration that draws nothing keeps
-     * the window showing its last frame, and should wait for input
-     * (waitEvents()) or the loop spins.
+     * @p actions as it describes. An iteration that does not present, because
+     * nothing changed or readyToPresent() is false, keeps the window showing
+     * its last frame and should wait for input (waitEvents()) or the loop spins.
      *
      * Desktop: blocks until the window closes. WASM: registers the browser
      * animation-frame loop and returns immediately (the callable and window
@@ -142,12 +141,34 @@ class IWindowManager
         pollEvents();
     }
 
-    //! Present the current frame: GL buffer swap, software blit, or no-op for
-    //! Vulkan and Metal (which the application presents through its own
-    //! swapchain / the CAMetalLayer's drawables). Called by whoever drew the
-    //! frame, never by process(), and not for an iteration that drew nothing.
+    //! OpenGL's buffer swap, called by whoever drew the frame and only after a frame that drew; never by process().
+    //! A no-op for every other API. Never blocks: pacing is readyToPresent().
     virtual void swapBuffers()
     {
+    }
+
+    //! A renderer that presents through its own API (Vulkan, Metal) calls this after each present the driver took,
+    //! saying whether that present waits for the display. A window that paces frames (Wayland) then knows one is on
+    //! its way, and readyToPresent() follows the mode the swapchain really has, not the one asked for. Never blocks.
+    virtual void framePresented(PresentPacing /*pacing*/) noexcept
+    {
+    }
+
+    /**
+     * @brief Whether a frame presented now would not have to wait for the display, or be refused.
+     *
+     * False while the platform has not yet shown the last frame this window presented (on Wayland: a vsynced OpenGL
+     * window, or a Vulkan present that waits for the display; a software window on Wayland or X11), or has no buffer
+     * to draw into until it has. That is
+     * the whole of a hidden window's wait: the platform shows nothing then, a present that waits for the display
+     * waits inside the driver without a bound, and the event loop stops with it. A renderer starts no window frame
+     * until this is true; waitEvents() returns when it becomes so, and nothing blocks, polls or times out.
+     *
+     * Always true where the platform paces inside its own present (SDL, GLFW) or does not (a window without vsync).
+     */
+    [[nodiscard]] virtual bool readyToPresent() const noexcept
+    {
+        return true;
     }
 
     //! Native window handle (SDL_Window*, GLFWwindow*, X11 Window, wl_surface*).
@@ -251,8 +272,9 @@ class IWindowManager
     {
     }
 
-    //! CPU windows with WindowDetails::vsync set: true only if the loop is held to the display's refresh
-    //! by blocking, not by dropping frames: a backend that merely refuses them would spin.
+    //! CPU windows with WindowDetails::vsync set: true only if the loop is held to the display's refresh, by the
+    //! present blocking or by readyToPresent() withholding frames the loop then sleeps through: a backend that merely
+    //! refuses them would spin.
     //! When false, process() caps the loop at 60 Hz instead of running it uncapped.
     [[nodiscard]] virtual bool presentWaitsForDisplay() const noexcept;
 

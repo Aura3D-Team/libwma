@@ -532,14 +532,14 @@ void GlfwWindowManager::windowFocusCallback(GLFWwindow *window, int focused)
 {
     auto *instance = getInstanceFromWindow(window);
     if (instance)
-        instance->windowFlags_.focused = (focused == GLFW_TRUE);
+        instance->windowFlags_.setState(WindowState::Focused, focused == GLFW_TRUE);
 }
 
 void GlfwWindowManager::windowIconifyCallback(GLFWwindow *window, int iconified)
 {
     auto *instance = getInstanceFromWindow(window);
     if (instance)
-        instance->windowFlags_.minimized = (iconified == GLFW_TRUE);
+        instance->windowFlags_.setState(WindowState::Minimized, iconified == GLFW_TRUE);
 }
 
 void GlfwWindowManager::windowRefreshCallback(GLFWwindow *window)

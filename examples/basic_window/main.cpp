@@ -325,7 +325,7 @@ int main(int argc, char **argv)
                 if (fpsLogTimer >= 1000.0)
                 {
                     INK_LOG << "fps: " << flags->fps << " (dt " << flags->deltaTime << " ms)"
-                            << " minimized:" << flags->minimized << " focused:" << flags->focused
+                            << " minimized:" << flags->isMinimized() << " focused:" << flags->isFocused()
                             << " cursorPos:" << mouse.getCurrentPosition().x << "," << mouse.getCurrentPosition().y;
                     fpsLogTimer = 0.0;
                 }
@@ -335,6 +335,13 @@ int main(int argc, char **argv)
                 // and stops there; a real renderer wanting this in parallel would
                 // spread it across its own worker pool, the way Aura3D's
                 // CpuFrameBufferManager does, rather than wma owning one on its behalf.
+                //! Nothing to draw into until the platform has shown the last frame: sleep until it says so, which is
+                //! the loop's pacing and keeps a vsynced window from spinning.
+                if (!windowManager->readyToPresent())
+                {
+                    windowManager->waitEvents(100);
+                    return;
+                }
                 wma::SoftwareFramebuffer fb = windowManager->lockFramebuffer();
                 if (fb.valid())
                 {
@@ -352,7 +359,6 @@ int main(int argc, char **argv)
                         }
                     }
                     windowManager->presentFramebuffer();
-                    windowManager->swapBuffers(); // paces the loop to the display on a vsynced window
                 }
             });
 

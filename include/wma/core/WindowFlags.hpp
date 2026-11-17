@@ -13,15 +13,15 @@ enum class WindowState : u8
 {
     Nothing = 0,
     //! Iconified or minimized by the user or the window manager.
-    Minimized = 1u << 0,
+    Minimized = 1u << 0u,
     //! Nothing of the window is on screen though it is not minimized: another workspace, fully covered, or the
     //! screen is off. A renderer skips its frames as for a minimized one. Set only where the platform says so (a
     //! Wayland compositor's suspended state, SDL's occlusion events, X11's _NET_WM_STATE_HIDDEN); never set
     //! elsewhere. A window that is merely waiting for a frame to be shown is not this: see
     //! IWindowManager::readyToPresent().
-    Occluded = 1u << 1,
+    Occluded = 1u << 1u,
     //! The window has keyboard focus. A new window has it until the platform says otherwise.
-    Focused = 1u << 2,
+    Focused = 1u << 2u,
 };
 
 INK_ENUM_FLAGS(WindowState)

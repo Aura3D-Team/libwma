@@ -61,8 +61,8 @@ struct WindowFlags
     bool textInputDismissed;
 
     WindowFlags()
-        : resizeCount(0), exposeCount(0), state(WindowState::Focused), deltaTime(0), fps(0.0),
-          surfaceLost(false), textInputDismissed(false)
+        : resizeCount(0), exposeCount(0), state(WindowState::Focused), deltaTime(0), fps(0.0), surfaceLost(false),
+          textInputDismissed(false)
     {
     }
 

@@ -57,6 +57,7 @@ class X11WindowManager : public IWindowManager
     MouseListener &getMouseListener() noexcept override;
     [[nodiscard]] u32 displayRefreshHz() const noexcept override;
     [[nodiscard]] bool presentWaitsForDisplay() const noexcept override;
+    [[nodiscard]] bool readyToPresent() const noexcept override;
     bool shouldClose() const override;
     WindowBackend getBackendType() const override;
     GraphicsAPI getGraphicsAPI() const override;
@@ -84,6 +85,7 @@ class X11WindowManager : public IWindowManager
     Atom netWmState_ = 0;
     Atom netWmStateMaximizedVert_ = 0;
     Atom netWmStateMaximizedHorz_ = 0;
+    Atom netWmStateHidden_ = 0;
     Atom netWmName_ = 0;
     Atom utf8String_ = 0;
     bool maximized_ = false;
@@ -132,11 +134,12 @@ class X11WindowManager : public IWindowManager
     void setupPresent();
     [[nodiscard]] bool createPresentPixmap(Slot &slot, i32 width, i32 height);
     void handlePresentEvent(XGenericEventCookie &cookie);
-    //! swapBuffers() of a Present window: blocks until the frame just presented is on screen.
-    void waitForPresent();
+    //! A slot lockFramebuffer() could hand out: one the server is done reading.
+    [[nodiscard]] bool hasIdleSlot() const noexcept;
     void initGL();
     bool requestMaximized(bool maximized) noexcept;
-    void refreshMaximized() noexcept;
+    //! Re-reads _NET_WM_STATE: maximized, and hidden (iconified, or on another workspace).
+    void refreshWindowState() noexcept;
 };
 
 } // namespace wma

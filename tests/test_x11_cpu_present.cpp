@@ -14,6 +14,7 @@
 #include <fstream>
 #include <string>
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
@@ -109,6 +110,27 @@ void settle(wma::IWindowManager &window)
         window.waitEvents(5);
 }
 
+//! The pacing a vsynced loop does: sleep in waitEvents() until the server has shown the last frame. A completion that
+//! never comes shows as a failure rather than a hang.
+bool waitUntilReady(wma::IWindowManager &window)
+{
+    for (int attempt = 0; attempt < 200 && !window.readyToPresent(); ++attempt)
+        window.waitEvents(5);
+    return window.readyToPresent();
+}
+
+//! Sets or clears _NET_WM_STATE_HIDDEN on the window, as a window manager does when it iconifies without unmapping.
+void setHidden(wma::IWindowManager &window, bool hidden)
+{
+    auto *display = static_cast<Display *>(window.getNativeDisplayHandle());
+    const auto id = reinterpret_cast<Window>(window.getWindowInstance());
+    const Atom state = XInternAtom(display, "_NET_WM_STATE", False);
+    const Atom hiddenAtom = XInternAtom(display, "_NET_WM_STATE_HIDDEN", False);
+    XChangeProperty(display, id, state, XA_ATOM, 32, PropModeReplace,
+                    reinterpret_cast<const unsigned char *>(&hiddenAtom), hidden ? 1 : 0);
+    XSync(display, False);
+}
+
 } // namespace
 
 int main()
@@ -151,8 +173,23 @@ int main()
         check(acquire(*window).valid(), "a slot is released once the server reports it");
         window->presentFramebuffer();
 
+        check(window->getWindowFlags()->exposeCount > 0, "the first expose is counted");
+        wma::ExposeWatch exposes{*window->getWindowFlags()};
+        XClearArea(display, id, 0, 0, 0, 0, True);
+        settle(*window);
+        check(exposes.consume(*window->getWindowFlags()), "an expose asks for a redraw");
+        XUnmapWindow(display, id);
+        settle(*window);
+        check(window->getWindowFlags()->isMinimized(), "an unmapped (iconified) window is minimized");
+        XMapWindow(display, id);
+        settle(*window);
+        check(!window->getWindowFlags()->isMinimized() && exposes.consume(*window->getWindowFlags()),
+              "mapped again it is not, and asks for a redraw");
+
+        wma::ResizeWatch resizes{*window->getWindowFlags()};
         XResizeWindow(display, id, 400, 300);
         pumpUntilSize(*window, 400, 300);
+        check(resizes.consume(*window->getWindowFlags()), "a resize is counted");
         const wma::SoftwareFramebuffer resized = acquire(*window);
         check(resized.valid() && resized.width == 400 && resized.height == 300, "the framebuffer follows a resize");
         if (resized.valid())
@@ -204,31 +241,28 @@ int main()
 
         // The first slot decides: a server that cannot map the segment as a pixmap withdraws Present.
         bool flowing = present(*window, kColor);
-        window->swapBuffers();
         const bool waits = window->presentWaitsForDisplay();
         std::printf("vsync present: %s\n", waits ? "X Present" : "rate cap");
+        if (waits)
+            check(!window->readyToPresent(), "a vsynced frame holds the next until the server has shown it");
+        flowing = flowing && waitUntilReady(*window);
         check(flowing, "a vsynced frame can be presented");
         check(readCentre(*window) == kColor, "the vsynced pixels reach the window");
 
         constexpr int kFrames = 30;
         const auto begin = std::chrono::steady_clock::now();
         for (int frame = 0; frame < kFrames && flowing; ++frame)
-        {
-            flowing = present(*window, kColor + static_cast<u32>(frame));
-            window->swapBuffers();
-        }
+            flowing = present(*window, kColor + static_cast<u32>(frame)) && waitUntilReady(*window);
         const std::chrono::duration<double, std::milli> elapsed = std::chrono::steady_clock::now() - begin;
         std::printf("vsynced frame: %.2f ms\n", elapsed.count() / kFrames);
         check(flowing, "thirty vsynced frames each present");
         check(readCentre(*window) == kColor + (kFrames - 1), "the last frame is the one on screen");
 
-        // Nothing presented: swapBuffers() must block for input or a refresh, not spin.
-        const auto idleBegin = std::chrono::steady_clock::now();
+        // Pacing is readyToPresent(): swapBuffers() has nothing to do for a software window, and never blocks.
+        const auto swapBegin = std::chrono::steady_clock::now();
         window->swapBuffers();
-        const std::chrono::duration<double, std::milli> idle = std::chrono::steady_clock::now() - idleBegin;
-        std::printf("idle swap: %.2f ms\n", idle.count());
-        if (waits)
-            check(idle.count() >= 5.0, "an idle swapBuffers blocks instead of spinning");
+        const std::chrono::duration<double, std::milli> swap = std::chrono::steady_clock::now() - swapBegin;
+        check(swap.count() < 2.0, "swapBuffers() never blocks a software window");
 
         bool churned = true;
         for (int step = 0; step < 40 && churned; ++step)
@@ -236,8 +270,7 @@ int main()
             const i32 width = 300 + (step % 7) * 20;
             XResizeWindow(display, id, static_cast<unsigned>(width), 260);
             pumpUntilSize(*window, width, 260);
-            churned = present(*window, kColor);
-            window->swapBuffers();
+            churned = present(*window, kColor) && waitUntilReady(*window);
         }
         check(churned, "forty vsynced resize steps each present a frame");
 
@@ -245,11 +278,17 @@ int main()
         XSync(display, False);
         bool unmapped = true;
         for (int frame = 0; frame < 10 && unmapped; ++frame)
-        {
-            unmapped = present(*window, kColor);
-            window->swapBuffers();
-        }
+            unmapped = present(*window, kColor) && waitUntilReady(*window);
         check(unmapped, "vsynced frames keep flowing while the window is unmapped");
+        XMapWindow(display, id);
+        settle(*window);
+
+        setHidden(*window, true);
+        settle(*window);
+        check(window->getWindowFlags()->isOccluded(), "_NET_WM_STATE_HIDDEN makes the window occluded");
+        setHidden(*window, false);
+        settle(*window);
+        check(!window->getWindowFlags()->isOccluded(), "and clearing it shows the window again");
 
         window->destroy();
     }

@@ -29,6 +29,13 @@ enum class GraphicsAPI : i32
     Metal
 };
 
+//! Whether a present the renderer made waits for the display, as Vulkan's Fifo does: see framePresented().
+enum class PresentPacing : u8
+{
+    Free,    //!< Mailbox, Immediate: the present never waits.
+    Display, //!< Fifo and its variants: the present waits for the display to take the frame.
+};
+
 enum class WindowBackend : i32
 {
     GLFW,

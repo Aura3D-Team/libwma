@@ -60,6 +60,8 @@ class WaylandWindowManager : public IWindowManager
     KeyboardListener &getKeyboardListener() noexcept override;
     void setTextInputEnabled(bool enabled) noexcept override;
     [[nodiscard]] bool isTextInputEnabled() const noexcept override;
+    [[nodiscard]] bool readyToPresent() const noexcept override;
+    void framePresented(PresentPacing pacing) noexcept override;
     [[nodiscard]] bool isClipboardSupported() const noexcept override;
     [[nodiscard]] std::string getClipboardText() override;
     bool setClipboardText(std::string_view text) override;
@@ -100,7 +102,8 @@ class WaylandWindowManager : public IWindowManager
     [[nodiscard]] SystemCursor hoverCursor(f64 x, f64 y) const;
     //! pollEvents() and waitEvents() differ only by the poll timeout.
     void dispatch(int timeoutMs);
-    void waitForFrameCallback();
+    //! Asks the compositor to say when the next commit has been shown; swapBuffers() paces on the answer.
+    void requestFrameCallback();
     wl_display *display_;
     wl_registry *registry_;
     wl_compositor *compositor_;
@@ -168,7 +171,8 @@ class WaylandWindowManager : public IWindowManager
     //! two reused buffers and no pacing). Non-null while the last commit is
     //! unacknowledged.
     wl_callback *frameCallback_ = nullptr;
-    int dispatchedEvents_ = 0; //!< Events handled by dispatch() since waitForFrameCallback() last reset it
+    //! A frame presented in a way that waits for the display is not yet shown: frameCallback_ fires when it is.
+    bool framePending_ = false;
 
     //! OpenGL via EGL (opaque so this header needs no EGL includes).
     void *eglWindow_;  //!< wl_egl_window*
@@ -184,6 +188,7 @@ class WaylandWindowManager : public IWindowManager
     bool maximized_ = false;
     bool pendingMaximized_ = false;
     bool pendingFloating_ = true;
+    bool pendingSuspended_ = false;
     i32 pendingWidth_ = 0;
     i32 pendingHeight_ = 0;
     //! Last size while neither maximized nor fullscreen; see handleXdgSurfaceConfigure.
@@ -217,6 +222,7 @@ class WaylandWindowManager : public IWindowManager
                                            wl_array *states);
     static void handleXdgToplevelClose(void *data, xdg_toplevel *xdg_toplevel);
     static void handleXdgToplevelConfigureBounds(void *data, xdg_toplevel *xdg_toplevel, i32 width, i32 height);
+    static void handleXdgToplevelWmCapabilities(void *data, xdg_toplevel *xdg_toplevel, wl_array *capabilities);
 
     static const zxdg_toplevel_decoration_v1_listener xdgToplevelDecorationListener_;
     static void handleXdgToplevelDecorationConfigure(void *data, zxdg_toplevel_decoration_v1 *decoration, u32 mode);

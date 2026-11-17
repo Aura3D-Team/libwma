@@ -55,7 +55,6 @@ void webLoopTick(void *userData)
     ctx->timer.beginFrame();
     ctx->manager->pollEvents();
     ctx->actions();
-    ctx->manager->swapBuffers();
     ctx->timer.endFrame();
 }
 
@@ -99,7 +98,6 @@ void IWindowManager::process(std::function<void()> &&actions)
         timer.setTargetFPS(detail::effectiveTargetFPS(details, api, waits, refreshHz));
 
         actions();
-        swapBuffers();
         timer.endFrame();
     }
 }

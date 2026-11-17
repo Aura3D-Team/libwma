@@ -304,6 +304,7 @@ int main(int argc, char **argv)
         // Main loop
         unsigned long long frameCount = 0;
         f64 fpsLogTimer = 0.0;
+        wma::ResizeWatch resizes;
 
         windowManager->process(
             [&]()
@@ -313,11 +314,10 @@ int main(int argc, char **argv)
                 auto *flags = windowManager->getWindowFlags();
                 fpsLogTimer += flags->deltaTime;
 
-                if (flags->resized)
+                if (resizes.consume(*flags))
                 {
                     const auto *details = windowManager->getWindowDetails();
                     INK_LOG << "Window resized to " << details->width << "x" << details->height;
-                    flags->resized = false;
                 }
 
                 // windowFlags_ exposes deltaTime/fps every frame; log once/second
@@ -325,7 +325,7 @@ int main(int argc, char **argv)
                 if (fpsLogTimer >= 1000.0)
                 {
                     INK_LOG << "fps: " << flags->fps << " (dt " << flags->deltaTime << " ms)"
-                            << " minimized:" << flags->minimized << " focused:" << flags->focused
+                            << " minimized:" << flags->isMinimized() << " focused:" << flags->isFocused()
                             << " cursorPos:" << mouse.getCurrentPosition().x << "," << mouse.getCurrentPosition().y;
                     fpsLogTimer = 0.0;
                 }
@@ -335,6 +335,13 @@ int main(int argc, char **argv)
                 // and stops there; a real renderer wanting this in parallel would
                 // spread it across its own worker pool, the way Aura3D's
                 // CpuFrameBufferManager does, rather than wma owning one on its behalf.
+                //! Nothing to draw into until the platform has shown the last frame: sleep until it says so, which is
+                //! the loop's pacing and keeps a vsynced window from spinning.
+                if (!windowManager->readyToPresent())
+                {
+                    windowManager->waitEvents(100);
+                    return;
+                }
                 wma::SoftwareFramebuffer fb = windowManager->lockFramebuffer();
                 if (fb.valid())
                 {

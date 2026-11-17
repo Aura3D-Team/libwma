@@ -185,13 +185,13 @@ void WaylandKeyboardListener::handleEnter(u32 serial, wl_surface *, wl_array *)
     if (inputSerial_)
         *inputSerial_ = serial;
     if (windowFlags_)
-        windowFlags_->focused = true;
+        windowFlags_->setState(WindowState::Focused, true);
 }
 
 void WaylandKeyboardListener::handleLeave(u32, wl_surface *)
 {
     if (windowFlags_)
-        windowFlags_->focused = false;
+        windowFlags_->setState(WindowState::Focused, false);
     //! Releases that land while another surface holds focus never reach us, so
     //! anything still marked held would stay stuck down -- most visibly a
     //! modifier held across a focus switch.

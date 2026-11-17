@@ -24,6 +24,7 @@
 #include <exception>
 #include <functional>
 #include <future>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -35,6 +36,8 @@
 // Kept in a separate TU: generated client and server protocol headers define
 // the same enums and cannot both be included here.
 std::unique_ptr<wma::IWindowManager> moveWaylandWindow(std::unique_ptr<wma::IWindowManager> window, bool assign);
+//! What a Vulkan driver's present does to the surface: one commit, flushed.
+void commitWaylandSurface(wma::IWindowManager &window);
 
 namespace
 {
@@ -78,13 +81,14 @@ struct Requests
     int relativeReleases = 0;
     bool lockOnPointer = false;
     bool lockPersistent = false;
+    int frames = 0; //!< wl_surface.frame requests
 };
 
 class Compositor
 {
   public:
     explicit Compositor(bool decorations = false, uint32_t chosenMode = ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE,
-                        bool capture = false, bool clipboard = false)
+                        bool capture = false, bool clipboard = false, int shellVersion = 1)
         : chosenMode_(chosenMode)
     {
         display_ = wl_display_create();
@@ -95,7 +99,7 @@ class Compositor
         require(wakeSource_, "register server wake event");
         wl_global_create(display_, &wl_compositor_interface, 4, this, bindCompositor);
         seatGlobal_ = wl_global_create(display_, &wl_seat_interface, 1, this, bindSeat);
-        wl_global_create(display_, &xdg_wm_base_interface, 1, this, bindShell);
+        wl_global_create(display_, &xdg_wm_base_interface, shellVersion, this, bindShell);
         if (decorations)
             wl_global_create(display_, &zxdg_decoration_manager_v1_interface, 1, this, bindDecorations);
         if (clipboard)
@@ -289,14 +293,28 @@ class Compositor
                 wl_global_remove(seatGlobal_);
             });
     }
-    void configure(bool maximized, int width = 0, int height = 0, bool finish = true)
+    void configure(bool maximized, int width = 0, int height = 0, bool finish = true, bool suspended = false)
     {
         invoke(
-            [this, maximized, width, height, finish]
+            [this, maximized, width, height, finish, suspended]
             {
-                sendToplevelConfigure(maximized, width, height);
+                sendToplevelConfigure(maximized, width, height, suspended);
                 if (finish)
                     xdg_surface_send_configure(xdgSurface_, ++configureSerial_);
+            });
+    }
+    //! Every committed frame reaches the screen: their callbacks are done. A hidden window is one this is never called
+    //! for.
+    void showFrames()
+    {
+        invoke(
+            [this]
+            {
+                for (wl_resource *callback : std::exchange(committedFrames_, {}))
+                {
+                    wl_callback_send_done(callback, 0);
+                    wl_resource_destroy(callback);
+                }
             });
     }
     void finishConfigure()
@@ -344,6 +362,9 @@ class Compositor
     std::vector<std::string> pendingMimes_;
     std::string offeredText_;
     ClipboardRequests clipboard_;
+    //! Frame callbacks are double-buffered state: a request applies to the next commit.
+    std::vector<wl_resource *> pendingFrames_;
+    std::vector<wl_resource *> committedFrames_;
     bool initialConfigure_ = false;
     uint32_t configureSerial_ = 1;
     uint32_t chosenMode_;
@@ -373,12 +394,14 @@ class Compositor
         return 0;
     }
 
-    void sendToplevelConfigure(bool maximized, int width, int height)
+    void sendToplevelConfigure(bool maximized, int width, int height, bool suspended = false)
     {
         wl_array states;
         wl_array_init(&states);
         if (maximized)
             *static_cast<uint32_t *>(wl_array_add(&states, sizeof(uint32_t))) = XDG_TOPLEVEL_STATE_MAXIMIZED;
+        if (suspended)
+            *static_cast<uint32_t *>(wl_array_add(&states, sizeof(uint32_t))) = XDG_TOPLEVEL_STATE_SUSPENDED;
         xdg_toplevel_send_configure(toplevel_, width, height, &states);
         wl_array_release(&states);
     }
@@ -393,9 +416,25 @@ class Compositor
                 {
                     struct wl_surface_interface value{};
                     value.destroy = destroy;
+                    value.frame = [](wl_client *client, wl_resource *resource, uint32_t id)
+                    {
+                        auto &self = owner(resource);
+                        ++self.requests_.frames;
+                        wl_resource *callback = wl_resource_create(client, &wl_callback_interface, 1, id);
+                        wl_resource_set_implementation(callback, nullptr, &self,
+                                                       [](wl_resource *callback)
+                                                       {
+                                                           auto &self = owner(callback);
+                                                           std::erase(self.pendingFrames_, callback);
+                                                           std::erase(self.committedFrames_, callback);
+                                                       });
+                        self.pendingFrames_.push_back(callback);
+                    };
                     value.commit = [](wl_client *, wl_resource *resource)
                     {
                         auto &self = owner(resource);
+                        std::ranges::move(self.pendingFrames_, std::back_inserter(self.committedFrames_));
+                        self.pendingFrames_.clear();
                         if (!self.toplevel_ || self.initialConfigure_ || resource != self.surface_)
                             return;
                         self.initialConfigure_ = true;
@@ -504,7 +543,8 @@ class Compositor
                             return value;
                         }();
                         auto &self = owner(resource);
-                        self.toplevel_ = wl_resource_create(client, &xdg_toplevel_interface, 1, id);
+                        self.toplevel_ =
+                            wl_resource_create(client, &xdg_toplevel_interface, wl_resource_get_version(resource), id);
                         wl_resource_set_implementation(self.toplevel_, &impl, &self, nullptr);
                     };
                     value.ack_configure = [](wl_client *, wl_resource *, uint32_t)
@@ -514,7 +554,8 @@ class Compositor
                 }();
                 auto &self = owner(resource);
                 self.surface_ = surface;
-                self.xdgSurface_ = wl_resource_create(client, &xdg_surface_interface, 1, id);
+                self.xdgSurface_ =
+                    wl_resource_create(client, &xdg_surface_interface, wl_resource_get_version(resource), id);
                 wl_resource_set_implementation(self.xdgSurface_, &impl, &self, nullptr);
             },
             .pong =
@@ -748,6 +789,7 @@ void testControlsAndConfigure()
     check(requests.title == "Aura3D \xc3\xa9" && requests.minimizes == 1 && requests.maximizes == 1,
           "title, minimize, and maximize reach xdg_toplevel");
     check(!window->isMaximized(), "maximize request does not optimistically change compositor state");
+    wma::ResizeWatch resizes{*window->getWindowFlags()};
     server.configure(true, 0, 0, false);
     sync(*window);
     check(!window->isMaximized(), "toplevel state waits for the matching surface configure");
@@ -756,6 +798,7 @@ void testControlsAndConfigure()
     check(window->isMaximized() && window->getWindowDetails()->width == 800 &&
               window->getWindowDetails()->height == 600,
           "zero-size configure updates state and preserves dimensions");
+    check(!resizes.consume(*window->getWindowFlags()), "a configure that keeps the size is not a resize");
     check(window->restore(), "restore queues unset_maximized");
     sync(*window);
     check(server.requests().restores == 1 && window->isMaximized(), "restore state also waits for configure");
@@ -764,13 +807,16 @@ void testControlsAndConfigure()
     check(!window->isMaximized() && window->getWindowDetails()->width == 1024 &&
               window->getWindowDetails()->height == 768,
           "restored configure updates size and state");
+    check(resizes.consume(*window->getWindowFlags()), "a restore to another size is a resize");
     server.configure(true, 1920, 1080);
     sync(*window);
+    check(resizes.consume(*window->getWindowFlags()), "a maximize is a resize");
     server.configure(false);
     sync(*window);
     check(!window->isMaximized() && window->getWindowDetails()->width == 1024 &&
               window->getWindowDetails()->height == 768,
           "zero-size restore returns to the last floating size");
+    check(resizes.consume(*window->getWindowFlags()), "returning to the floating size is a resize");
     server.closeWindow();
     sync(*window);
     check(window->shouldClose(), "compositor close sets the existing shouldClose flag");
@@ -1195,10 +1241,72 @@ void testClipboard()
 
 } // namespace
 
+//! readyToPresent() follows the frame callback of a present that waits for the display, and nothing ever blocks on it.
+void testFramePacing()
+{
+    using Clock = std::chrono::steady_clock;
+    Compositor server;
+    auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, {});
+    window->createWindow("frame pacing");
+    sync(*window);
+    check(window->readyToPresent(), "a window that presented nothing is ready");
+    check(server.requests().frames == 1, "a Vulkan window asks for a frame callback before its first present");
+
+    commitWaylandSurface(*window);
+    window->framePresented(wma::PresentPacing::Free);
+    sync(*window);
+    check(window->readyToPresent(), "a present that does not wait for the display holds nothing back");
+    server.showFrames();
+    sync(*window);
+    check(server.requests().frames == 2, "a frame shown re-arms the request for the next present");
+
+    commitWaylandSurface(*window);
+    window->framePresented(wma::PresentPacing::Display);
+    sync(*window);
+    check(!window->readyToPresent(), "a present that waits for the display holds the next until it is shown");
+
+    //! A hidden window: the compositor never shows the frame. The wait is the caller's, bounded by its own timeout.
+    const auto begin = Clock::now();
+    window->waitEvents(30);
+    const std::chrono::duration<double, std::milli> waited = Clock::now() - begin;
+    check(waited.count() < 500.0 && !window->readyToPresent(),
+          "a frame that is never shown blocks nothing: waitEvents() returns on its own timeout");
+
+    server.showFrames();
+    const auto woken = Clock::now();
+    window->waitEvents(2000);
+    const std::chrono::duration<double, std::milli> wake = Clock::now() - woken;
+    check(window->readyToPresent() && wake.count() < 1000.0,
+          "the frame being shown wakes waitEvents() and makes the window ready");
+    sync(*window);
+    check(server.requests().frames == 3, "and the request for the next present is already made");
+
+    window->framePresented(wma::PresentPacing::Display);
+    check(!window->readyToPresent(), "a present that waits while a request is pending is held back too");
+}
+
+//! The compositor's word that nothing of the window is on screen (xdg-shell 6).
+void testSuspended()
+{
+    Compositor server(false, ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE, false, false, 6);
+    auto window = wma::createWaylandWindowManager({}, wma::GraphicsAPI::Vulkan, {});
+    window->createWindow("suspended");
+    sync(*window);
+    check(!window->getWindowFlags()->isOccluded(), "a new window is not occluded");
+    server.configure(false, 0, 0, true, true);
+    sync(*window);
+    check(window->getWindowFlags()->isOccluded(), "a suspended toplevel is occluded");
+    server.configure(false);
+    sync(*window);
+    check(!window->getWindowFlags()->isOccluded(), "and is not once the compositor shows it again");
+}
+
 int main()
 {
     try
     {
+        testFramePacing();
+        testSuspended();
         testControlsAndConfigure();
         testHitTest();
         testDecorationNegotiation();

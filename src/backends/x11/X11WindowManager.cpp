@@ -57,8 +57,8 @@ X11WindowManager::X11WindowManager(X11WindowManager &&other) noexcept
       randrEventBase_(std::exchange(other.randrEventBase_, -1)), window_(std::exchange(other.window_, 0)),
       colormap_(std::exchange(other.colormap_, 0)), wmDeleteWindow_(other.wmDeleteWindow_),
       netWmState_(other.netWmState_), netWmStateMaximizedVert_(other.netWmStateMaximizedVert_),
-      netWmStateMaximizedHorz_(other.netWmStateMaximizedHorz_), netWmName_(other.netWmName_),
-      utf8String_(other.utf8String_), maximized_(std::exchange(other.maximized_, false)),
+      netWmStateMaximizedHorz_(other.netWmStateMaximizedHorz_), netWmStateHidden_(other.netWmStateHidden_),
+      netWmName_(other.netWmName_), utf8String_(other.utf8String_), maximized_(std::exchange(other.maximized_, false)),
       gc_(std::exchange(other.gc_, nullptr)), slots_(std::exchange(other.slots_, {})),
       shmCompletion_(other.shmCompletion_), shmRejected_(other.shmRejected_),
       presentOpcode_(std::exchange(other.presentOpcode_, -1)), presentEventId_(std::exchange(other.presentEventId_, 0)),
@@ -88,6 +88,7 @@ X11WindowManager &X11WindowManager::operator=(X11WindowManager &&other) noexcept
         netWmState_ = other.netWmState_;
         netWmStateMaximizedVert_ = other.netWmStateMaximizedVert_;
         netWmStateMaximizedHorz_ = other.netWmStateMaximizedHorz_;
+        netWmStateHidden_ = other.netWmStateHidden_;
         netWmName_ = other.netWmName_;
         utf8String_ = other.utf8String_;
         maximized_ = std::exchange(other.maximized_, false);
@@ -233,8 +234,9 @@ void X11WindowManager::createWindow(const char *windowName)
     }
 
     //! One round trip for every atom the window uses afterwards.
-    std::array<const char *, 5> atomNames{"_NET_WM_STATE", "_NET_WM_STATE_MAXIMIZED_VERT",
-                                          "_NET_WM_STATE_MAXIMIZED_HORZ", "_NET_WM_NAME", "UTF8_STRING"};
+    std::array<const char *, 6> atomNames{
+        "_NET_WM_STATE", "_NET_WM_STATE_MAXIMIZED_VERT", "_NET_WM_STATE_MAXIMIZED_HORZ", "_NET_WM_NAME",
+        "UTF8_STRING",   "_NET_WM_STATE_HIDDEN"};
     std::array<Atom, atomNames.size()> atoms{};
     XInternAtoms(display_, const_cast<char **>(atomNames.data()), static_cast<int>(atomNames.size()), False,
                  atoms.data());
@@ -243,6 +245,7 @@ void X11WindowManager::createWindow(const char *windowName)
     netWmStateMaximizedHorz_ = atoms[2];
     netWmName_ = atoms[3];
     utf8String_ = atoms[4];
+    netWmStateHidden_ = atoms[5];
     clipboard_ = std::make_unique<X11Clipboard>(display_, window_);
 
     setTitle(windowName);
@@ -348,9 +351,10 @@ bool X11WindowManager::isMaximized() const noexcept
     return maximized_;
 }
 
-void X11WindowManager::refreshMaximized() noexcept
+void X11WindowManager::refreshWindowState() noexcept
 {
     maximized_ = false;
+    windowFlags_.setState(WindowState::Occluded, false);
     if (!display_ || !window_)
         return;
 
@@ -369,6 +373,9 @@ void X11WindowManager::refreshMaximized() noexcept
     const std::span atoms{reinterpret_cast<const Atom *>(property), count};
     maximized_ = std::ranges::find(atoms, netWmStateMaximizedVert_) != atoms.end() &&
                  std::ranges::find(atoms, netWmStateMaximizedHorz_) != atoms.end();
+    //! A window manager that iconifies by hiding the window server-side (XWayland under a Wayland compositor) never
+    //! unmaps it, so this is the only word the application gets that nothing is on screen.
+    windowFlags_.setState(WindowState::Occluded, std::ranges::find(atoms, netWmStateHidden_) != atoms.end());
 }
 
 void X11WindowManager::close() noexcept
@@ -646,17 +653,27 @@ void X11WindowManager::pollEvents()
         switch (event.type)
         {
         case Expose:
+            //! The last of a series: one redraw covers every rectangle the server listed.
+            if (event.xexpose.count == 0)
+                windowFlags_.markExposed();
+            break;
+        case UnmapNotify:
+            windowFlags_.setState(WindowState::Minimized, true);
+            break;
+        case MapNotify:
+            //! The Expose that follows asks for the redraw.
+            windowFlags_.setState(WindowState::Minimized, false);
             break;
         case KeyPress:
         case KeyRelease:
             keyboardListener_->handleKeyEvent(XLookupKeysym(&event.xkey, 0), event.xkey);
             break;
         case FocusIn:
-            windowFlags_.focused = true;
+            windowFlags_.setState(WindowState::Focused, true);
             mouseListener_->setFocused(true);
             break;
         case FocusOut:
-            windowFlags_.focused = false;
+            windowFlags_.setState(WindowState::Focused, false);
             mouseListener_->setFocused(false);
             //! See FocusChangeMask in createWindow().
             keyboardListener_->releaseAllKeys();
@@ -703,32 +720,22 @@ void X11WindowManager::handlePresentEvent(XGenericEventCookie &cookie)
     }
 }
 
-void X11WindowManager::waitForPresent()
+bool X11WindowManager::hasIdleSlot() const noexcept
 {
-    //! A window the server never completes for (a stalled output) still ticks, slowly, instead of freezing.
-    constexpr auto kLimit = std::chrono::milliseconds(100);
-    //! Nothing was presented, so nothing to wait for; one refresh of blocking keeps an idle loop from spinning
-    //! and still wakes on input.
-    constexpr int kIdleWaitMs = 16;
+    return std::ranges::any_of(slots_,
+                               [](const Slot &slot)
+                               {
+                                   return !slot.busy;
+                               });
+}
 
-    if (presentPending_ == 0)
-    {
-        waitEvents(kIdleWaitMs);
-        return;
-    }
-
-    const auto deadline = std::chrono::steady_clock::now() + kLimit;
-    while (presentPending_ != 0 && !windowShouldClose_)
-    {
-        const auto remaining =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-        if (remaining.count() <= 0)
-        {
-            presentPending_ = 0;
-            break;
-        }
-        waitEvents(static_cast<int>(remaining.count()));
-    }
+bool X11WindowManager::readyToPresent() const noexcept
+{
+    if (graphicsAPI_ != GraphicsAPI::CPU)
+        return true;
+    //! Exactly what lockFramebuffer() would refuse for: the frame just presented is not yet on screen, or the server
+    //! still reads both slots. Either completion arrives as an event, which is what wakes waitEvents().
+    return presentPending_ == 0 && hasIdleSlot() && windowDetails_.width > 0 && windowDetails_.height > 0;
 }
 
 bool X11WindowManager::presentWaitsForDisplay() const noexcept
@@ -738,8 +745,6 @@ bool X11WindowManager::presentWaitsForDisplay() const noexcept
 
 void X11WindowManager::swapBuffers()
 {
-    if (graphicsAPI_ == GraphicsAPI::CPU && presentOpcode_ >= 0)
-        waitForPresent();
 #ifdef WMA_X11_HAS_GL
     if (graphicsAPI_ == GraphicsAPI::OpenGL && display_ && window_)
         glXSwapBuffers(display_, window_);
@@ -762,7 +767,7 @@ void X11WindowManager::handleWindowEvent(const XEvent *event)
         {
             windowDetails_.width = xce.width;
             windowDetails_.height = xce.height;
-            windowFlags_.resized = true;
+            windowFlags_.markResized();
         }
     }
     else if (randrEventBase_ >= 0 && event->type == randrEventBase_ + RRScreenChangeNotify)
@@ -772,7 +777,7 @@ void X11WindowManager::handleWindowEvent(const XEvent *event)
     }
     else if (event->type == PropertyNotify && event->xproperty.atom == netWmState_)
     {
-        refreshMaximized();
+        refreshWindowState();
     }
 }
 
@@ -805,8 +810,8 @@ SoftwareFramebuffer X11WindowManager::lockFramebuffer()
     if (graphicsAPI_ != GraphicsAPI::CPU || !display_)
         return {};
 
-    //! Both with the server: refuse the frame. That is the pacing, as with the Wayland frame callback;
-    //! IRenderer::needsFrame() already covers the drop, and the completion event wakes waitEvents().
+    //! Both with the server: refuse the frame. readyToPresent() says so before a renderer asks, and the completion
+    //! event wakes waitEvents().
     const auto idle = std::ranges::find_if(slots_,
                                            [](const Slot &slot)
                                            {

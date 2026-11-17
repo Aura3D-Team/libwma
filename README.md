@@ -227,7 +227,7 @@ wma::WindowDetails cfg {
 | `getGLProcAddress(name)` | Load an OpenGL function (OpenGL mode) |
 | `lockFramebuffer()` / `presentFramebuffer()` | Software (CPU) rendering |
 | `getKeyboardListener()` / `getMouseListener()` | Input |
-| `getWindowFlags()` | Runtime state (`resized`, `focused`, `deltaTime`, `fps`, …) |
+| `getWindowFlags()` | Runtime state (`resizeCount`, `state`, `deltaTime`, `fps`, …) |
 
 ### Graphics-API support per backend
 

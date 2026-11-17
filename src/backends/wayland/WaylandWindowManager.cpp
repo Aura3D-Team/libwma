@@ -58,13 +58,15 @@ const xdg_wm_base_listener WaylandWindowManager::xdgWmBaseListener_ = {handleXdg
 
 const xdg_surface_listener WaylandWindowManager::xdgSurfaceListener_ = {handleXdgSurfaceConfigure};
 
-//! wm_capabilities is a newer, optional xdg_toplevel event this listener has no use
-//! for; the trailing-positional initializer correctly leaves it null.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+//! Every event of the version bound in handleRegistryGlobal() needs a handler: libwayland aborts on a null one.
 const xdg_toplevel_listener WaylandWindowManager::xdgToplevelListener_ = {
-    handleXdgToplevelConfigure, handleXdgToplevelClose, handleXdgToplevelConfigureBounds};
-#pragma GCC diagnostic pop
+    .configure = handleXdgToplevelConfigure,
+    .close = handleXdgToplevelClose,
+    .configure_bounds = handleXdgToplevelConfigureBounds,
+#ifdef XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION
+    .wm_capabilities = handleXdgToplevelWmCapabilities,
+#endif
+};
 
 const zxdg_toplevel_decoration_v1_listener WaylandWindowManager::xdgToplevelDecorationListener_ = {
     handleXdgToplevelDecorationConfigure};
@@ -107,13 +109,14 @@ WaylandWindowManager::WaylandWindowManager(WaylandWindowManager &&other) noexcep
       shmPool_(std::move(other.shmPool_)), retiringPool_(std::move(other.retiringPool_)),
       lockedSlot_(std::exchange(other.lockedSlot_, nullptr)),
       frameCallback_(std::exchange(other.frameCallback_, nullptr)),
-      eglWindow_(std::exchange(other.eglWindow_, nullptr)), eglDisplay_(std::exchange(other.eglDisplay_, nullptr)),
-      eglContext_(std::exchange(other.eglContext_, nullptr)), eglSurface_(std::exchange(other.eglSurface_, nullptr)),
-      windowDetails_(other.windowDetails_), windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_),
-      windowShouldClose_(other.windowShouldClose_), configured_(std::exchange(other.configured_, false)),
-      maximized_(std::exchange(other.maximized_, false)),
+      framePending_(std::exchange(other.framePending_, false)), eglWindow_(std::exchange(other.eglWindow_, nullptr)),
+      eglDisplay_(std::exchange(other.eglDisplay_, nullptr)), eglContext_(std::exchange(other.eglContext_, nullptr)),
+      eglSurface_(std::exchange(other.eglSurface_, nullptr)), windowDetails_(other.windowDetails_),
+      windowFlags_(other.windowFlags_), graphicsAPI_(other.graphicsAPI_), windowShouldClose_(other.windowShouldClose_),
+      configured_(std::exchange(other.configured_, false)), maximized_(std::exchange(other.maximized_, false)),
       pendingMaximized_(std::exchange(other.pendingMaximized_, false)),
       pendingFloating_(std::exchange(other.pendingFloating_, true)),
+      pendingSuspended_(std::exchange(other.pendingSuspended_, false)),
       pendingWidth_(std::exchange(other.pendingWidth_, 0)), pendingHeight_(std::exchange(other.pendingHeight_, 0)),
       floatingWidth_(other.floatingWidth_), floatingHeight_(other.floatingHeight_),
       decorationMode_(std::exchange(other.decorationMode_, DecorationMode::ClientSide)),
@@ -151,6 +154,7 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         retiringPool_ = std::move(other.retiringPool_);
         lockedSlot_ = std::exchange(other.lockedSlot_, nullptr);
         frameCallback_ = std::exchange(other.frameCallback_, nullptr);
+        framePending_ = std::exchange(other.framePending_, false);
         eglWindow_ = std::exchange(other.eglWindow_, nullptr);
         eglDisplay_ = std::exchange(other.eglDisplay_, nullptr);
         eglContext_ = std::exchange(other.eglContext_, nullptr);
@@ -163,6 +167,7 @@ WaylandWindowManager &WaylandWindowManager::operator=(WaylandWindowManager &&oth
         maximized_ = std::exchange(other.maximized_, false);
         pendingMaximized_ = std::exchange(other.pendingMaximized_, false);
         pendingFloating_ = std::exchange(other.pendingFloating_, true);
+        pendingSuspended_ = std::exchange(other.pendingSuspended_, false);
         pendingWidth_ = std::exchange(other.pendingWidth_, 0);
         pendingHeight_ = std::exchange(other.pendingHeight_, 0);
         floatingWidth_ = other.floatingWidth_;
@@ -285,7 +290,9 @@ void WaylandWindowManager::createWindow(const char *windowName)
         allocateShmBuffer(windowDetails_.width, windowDetails_.height);
         break;
     case GraphicsAPI::Vulkan:
-        //! The application creates the VkSurfaceKHR from display_ + surface_.
+        //! The application creates the VkSurfaceKHR from display_ + surface_. Its first present carries this
+        //! request, renewed each time a frame is shown: whether a present waits is known only when it is made.
+        requestFrameCallback();
         break;
     case GraphicsAPI::Metal:
         //! Named rather than left to the default below purely for the
@@ -361,7 +368,10 @@ void WaylandWindowManager::initEGL()
     }
 
     eglMakeCurrent(eglDisplay, eglSurf, eglSurf, ctx);
-    eglSwapInterval(eglDisplay, windowDetails_.vsync ? 1 : 0);
+    //! Never the driver's wait: with an interval of 1 eglSwapBuffers blocks on the compositor's frame callback with no
+    //! bound, and a hidden window gets none, so the event loop would freeze. swapBuffers() paces on the callback
+    //! itself.
+    eglSwapInterval(eglDisplay, 0);
 
     eglDisplay_ = eglDisplay;
     eglContext_ = ctx;
@@ -450,8 +460,13 @@ void WaylandWindowManager::handleFrameDone(void *data, wl_callback *callback, u3
     auto *manager = static_cast<WaylandWindowManager *>(data);
     wl_callback_destroy(callback);
     //! Only clear our own pointer: destroy() or a later present may already have.
-    if (manager->frameCallback_ == callback)
-        manager->frameCallback_ = nullptr;
+    if (manager->frameCallback_ != callback)
+        return;
+    manager->frameCallback_ = nullptr;
+    manager->framePending_ = false;
+    //! Vulkan's driver commits on its own, so the request for the next frame has to be in place before it does.
+    if (manager->graphicsAPI_ == GraphicsAPI::Vulkan)
+        manager->requestFrameCallback();
 }
 
 void WaylandWindowManager::pollEvents()
@@ -482,10 +497,7 @@ void WaylandWindowManager::dispatch(int timeoutMs)
         }
         // Let the caller react to queued events without waiting for another one.
         if (dispatched > 0)
-        {
             timeoutMs = 0;
-            dispatchedEvents_ += dispatched;
-        }
     }
 
     if (wl_display_flush(display_) < 0 && errno != EAGAIN)
@@ -511,11 +523,8 @@ void WaylandWindowManager::dispatch(int timeoutMs)
             windowShouldClose_ = true;
     }
 
-    const int pending = wl_display_dispatch_pending(display_);
-    if (pending < 0)
+    if (wl_display_dispatch_pending(display_) < 0)
         windowShouldClose_ = true;
-    else
-        dispatchedEvents_ += pending;
 }
 
 void WaylandWindowManager::swapBuffers()
@@ -523,41 +532,44 @@ void WaylandWindowManager::swapBuffers()
 #ifdef WMA_WAYLAND_HAS_GL
     if (graphicsAPI_ == GraphicsAPI::OpenGL && eglDisplay_ && eglSurface_)
     {
+        //! Before the swap: its commit is what carries the request to the compositor.
+        if (windowDetails_.vsync)
+            requestFrameCallback();
         eglSwapBuffers(static_cast<EGLDisplay>(eglDisplay_), static_cast<EGLSurface>(eglSurface_));
+        framePending_ = windowDetails_.vsync && frameCallback_;
     }
 #endif
-
-    if (graphicsAPI_ == GraphicsAPI::CPU && windowDetails_.vsync)
-        waitForFrameCallback();
 }
 
-void WaylandWindowManager::waitForFrameCallback()
+void WaylandWindowManager::framePresented(PresentPacing pacing) noexcept
 {
-    //! A hidden or occluded surface gets no callbacks; the bound keeps such a window ticking, slowly, not frozen.
-    constexpr auto kLimit = std::chrono::milliseconds(100);
-    //! No frame was presented, so there is no callback to wait for; one refresh of blocking keeps an idle loop
-    //! from spinning and still wakes on input.
-    constexpr int kIdleWaitMs = 16;
+    //! The present has already committed, with the request made when the last frame was shown. Only one that waits
+    //! for the display is held back: the driver would wait inside the next present for this frame to be shown.
+    if (graphicsAPI_ == GraphicsAPI::Vulkan && pacing == PresentPacing::Display)
+        framePending_ = frameCallback_ != nullptr;
+}
 
-    if (!frameCallback_)
-    {
-        dispatch(kIdleWaitMs);
+bool WaylandWindowManager::readyToPresent() const noexcept
+{
+    if (graphicsAPI_ != GraphicsAPI::CPU)
+        return !framePending_;
+    //! Exactly what lockFramebuffer() would refuse for; the callback and a slot's release are events, which is what
+    //! wakes waitEvents().
+    return shmPool_ && !frameCallback_ &&
+           std::ranges::any_of(shmPool_->buffers,
+                               [](const ShmBuffer &slot)
+                               {
+                                   return !slot.busy;
+                               });
+}
+
+void WaylandWindowManager::requestFrameCallback()
+{
+    //! One still pending is a frame the compositor has not shown (a hidden window): it stands for the new one too.
+    if (frameCallback_ || !surface_)
         return;
-    }
-
-    const auto deadline = std::chrono::steady_clock::now() + kLimit;
-    while (frameCallback_ && !windowShouldClose_)
-    {
-        const auto remaining =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-        if (remaining.count() <= 0)
-            break;
-        dispatchedEvents_ = 0;
-        dispatch(static_cast<int>(remaining.count()));
-        //! The callback itself is one event; anything more is input the app should see before the next refresh.
-        if (frameCallback_ && dispatchedEvents_ > 0)
-            break;
-    }
+    frameCallback_ = wl_surface_frame(surface_);
+    wl_callback_add_listener(frameCallback_, &frameCallbackListener_, this);
 }
 
 void WaylandWindowManager::setupInputDevices()
@@ -609,7 +621,7 @@ FramebufferSize WaylandWindowManager::getFramebufferSize() noexcept
 SoftwareFramebuffer WaylandWindowManager::lockFramebuffer()
 {
     releaseRetiringPoolIfIdle();
-    //! Two independent reasons to refuse a frame: frameCallback_ paces rate (no point
+    //! Two independent reasons to refuse a frame (readyToPresent() reports both): frameCallback_ paces rate (no point
     //! rasterising faster than the compositor displays), slot busy-tracking is what
     //! keeps a write from ever landing in memory the compositor may still be reading.
     //! Vulkan gets both from its swapchain, OpenGL the first from eglSwapInterval; raw
@@ -635,8 +647,7 @@ void WaylandWindowManager::presentFramebuffer()
     lockedSlot_->busy = true;
     wl_surface_attach(surface_, lockedSlot_->buffer, 0, 0);
     wl_surface_damage(surface_, 0, 0, shmPool_->width, shmPool_->height);
-    frameCallback_ = wl_surface_frame(surface_);
-    wl_callback_add_listener(frameCallback_, &frameCallbackListener_, this);
+    requestFrameCallback();
     wl_surface_commit(surface_);
     wl_display_flush(display_);
     lockedSlot_ = nullptr;
@@ -645,7 +656,7 @@ void WaylandWindowManager::presentFramebuffer()
 bool WaylandWindowManager::presentWaitsForDisplay() const noexcept
 {
     //! swapBuffers() waits for the frame callback, which the compositor sends at the output's pace.
-    return graphicsAPI_ == GraphicsAPI::CPU && windowDetails_.vsync;
+    return (graphicsAPI_ == GraphicsAPI::CPU || graphicsAPI_ == GraphicsAPI::OpenGL) && windowDetails_.vsync;
 }
 
 const std::vector<const char *> WaylandWindowManager::getVulkanExtensions() const
@@ -843,6 +854,8 @@ WmaCode WaylandWindowManager::destroy()
     maximized_ = false;
     pendingMaximized_ = false;
     pendingFloating_ = true;
+    pendingSuspended_ = false;
+    framePending_ = false;
     pendingWidth_ = 0;
     pendingHeight_ = 0;
     configured_ = false;
@@ -976,7 +989,11 @@ void WaylandWindowManager::handleRegistryGlobal(void *data, wl_registry *registr
     }
     else if (strcmp(interface, xdg_wm_base_interface.name) == 0)
     {
-        manager->xdgWmBase_ = static_cast<xdg_wm_base *>(wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
+        //! Version 6 is where a compositor says the window is suspended: see WindowState::Occluded. Never above
+        //! what the generated protocol knows, whose listeners have a handler for every event.
+        const u32 known = std::min<u32>(static_cast<u32>(xdg_wm_base_interface.version), 6u);
+        manager->xdgWmBase_ = static_cast<xdg_wm_base *>(
+            wl_registry_bind(registry, name, &xdg_wm_base_interface, std::min(version, known)));
         xdg_wm_base_add_listener(manager->xdgWmBase_, &xdgWmBaseListener_, manager);
     }
     else if (strcmp(interface, wl_seat_interface.name) == 0 && !manager->seat_)
@@ -1056,7 +1073,7 @@ void WaylandWindowManager::handleSeatCapabilities(void *data, wl_seat *seat, u32
         if (manager->keyboard_)
         {
             manager->keyboardListener_->detach();
-            manager->windowFlags_.focused = false;
+            manager->windowFlags_.setState(WindowState::Focused, false);
             wl_keyboard_destroy(manager->keyboard_);
             manager->keyboard_ = nullptr;
         }
@@ -1098,6 +1115,7 @@ void WaylandWindowManager::handleXdgSurfaceConfigure(void *data, xdg_surface *xd
     //! Role and decoration events form one configuration ending at this event.
     manager->maximized_ = manager->pendingMaximized_;
     manager->decorationMode_ = manager->pendingDecorationMode_;
+    manager->windowFlags_.setState(WindowState::Occluded, manager->pendingSuspended_);
 
     //! Zero leaves the size to the client. Leaving maximized or fullscreen that
     //! way must return to the floating size rather than keep the larger one.
@@ -1120,7 +1138,7 @@ void WaylandWindowManager::handleXdgSurfaceConfigure(void *data, xdg_surface *xd
     {
         manager->windowDetails_.width = width;
         manager->windowDetails_.height = height;
-        manager->windowFlags_.resized = true;
+        manager->windowFlags_.markResized();
 
         if (manager->graphicsAPI_ == GraphicsAPI::CPU)
             manager->allocateShmBuffer(width, height);
@@ -1147,6 +1165,9 @@ void WaylandWindowManager::handleXdgToplevelConfigure(void *data, xdg_toplevel *
     };
     manager->pendingMaximized_ = has(XDG_TOPLEVEL_STATE_MAXIMIZED);
     manager->pendingFloating_ = !manager->pendingMaximized_ && !has(XDG_TOPLEVEL_STATE_FULLSCREEN);
+#ifdef XDG_TOPLEVEL_STATE_SUSPENDED_SINCE_VERSION
+    manager->pendingSuspended_ = has(XDG_TOPLEVEL_STATE_SUSPENDED);
+#endif
 }
 
 void WaylandWindowManager::handleXdgToplevelClose(void *data, xdg_toplevel *)
@@ -1156,6 +1177,10 @@ void WaylandWindowManager::handleXdgToplevelClose(void *data, xdg_toplevel *)
 }
 
 void WaylandWindowManager::handleXdgToplevelConfigureBounds(void *, xdg_toplevel *, i32, i32)
+{
+}
+
+void WaylandWindowManager::handleXdgToplevelWmCapabilities(void *, xdg_toplevel *, wl_array *)
 {
 }
 
